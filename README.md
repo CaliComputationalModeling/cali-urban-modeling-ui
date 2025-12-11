@@ -65,12 +65,12 @@ bash
 Copy code
 npm run preview
 ```
-##📚 **About the Project**
----
+📚 **About the Project**
+
 
 This UI is part of a thesis project focused on modeling and simulating mobility behaviors of homeless individuals in Santiago de Cali.
 The interface communicates with the Python backend to execute simulations, retrieve grid states, and visualize transitions produced by the Cellular Automata engine.
----
+
 
 👥 **Authors**
 David Gutiérrez
