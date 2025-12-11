@@ -73,6 +73,7 @@ The interface communicates with the Python backend to execute simulations, retri
 
 
 👥 **Authors**
+
 David Gutiérrez
 
 Esteban Ibarra Largo
