@@ -7,4 +7,5 @@ export const simulationEndpoints = {
   create: (simulation: Partial<Simulation>) => apiClient.post<Simulation>("/simulations", simulation),
   update: (id: string, simulation: Partial<Simulation>) => apiClient.put<Simulation>(`/simulations/${id}`, simulation),
   delete: (id: string) => apiClient.delete(`/simulations/${id}`),
+  run: () => apiClient.post<Simulation[]>("/simulations/run", {}),
 }

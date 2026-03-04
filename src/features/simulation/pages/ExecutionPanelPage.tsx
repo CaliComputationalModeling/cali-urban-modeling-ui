@@ -1,35 +1,104 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect } from "react"
 import { Card } from "@/shared/ui/Card"
 import { Button } from "@/shared/ui/Button"
-import { Play, Pause, Square } from "lucide-react"
+import { Play, Pause, Square, RefreshCw } from "lucide-react"
+import { useSimulationStore } from "@/store/simulationStore"
+import { ProgressBar } from "@/shared/ui/ProgressBar"
+import { LogConsole } from "@/shared/ui/LogConsole"
 
 export const ExecutionPanelPage = () => {
-  const [isRunning, setIsRunning] = useState(false)
-  const [progress, setProgress] = useState(45)
+  const {
+    isRunning,
+    currentIteration,
+    totalIterations,
+    logs,
+    error,
+    isLoading,
+    runStep,
+    stopSimulation,
+    startSimulation,
+    clearLogs,
+    fetchCells,
+    addLog,
+  } = useSimulationStore()
+
+  // Cargar celdas iniciales al montar
+  useEffect(() => {
+    fetchCells()
+    addLog("Panel de ejecución cargado", "info")
+  }, [])
+
+  const handleStartStop = async () => {
+    if (isRunning) {
+      stopSimulation()
+    } else {
+      startSimulation({ id: "default", name: "Simulación", version: "1.0", date: new Date().toISOString(), status: "running" as any, cells: [], config: { gridConfig: { width: 50, height: 50, cellSize: "10x10m" }, iterations: totalIterations, parameters: { climate: 0, security: 0, services: 0, mobility: 0 } }, currentIteration: 0, totalIterations })
+    }
+  }
+
+  const handleRunStep = async () => {
+    if (!isRunning) {
+      startSimulation({ id: "default", name: "Simulación", version: "1.0", date: new Date().toISOString(), status: "running" as any, cells: [], config: { gridConfig: { width: 50, height: 50, cellSize: "10x10m" }, iterations: totalIterations, parameters: { climate: 0, security: 0, services: 0, mobility: 0 } }, currentIteration: 0, totalIterations })
+    }
+    await runStep()
+  }
+
+  const handleRunAll = async () => {
+    if (isRunning || isLoading) return
+
+    startSimulation({ id: "default", name: "Simulación", version: "1.0", date: new Date().toISOString(), status: "running" as any, cells: [], config: { gridConfig: { width: 50, height: 50, cellSize: "10x10m" }, iterations: totalIterations, parameters: { climate: 0, security: 0, services: 0, mobility: 0 } }, currentIteration: 0, totalIterations })
+    
+    // Simular múltiples pasos
+    for (let i = 0; i < 5; i++) {
+      if (!isRunning) break
+      await runStep()
+      await new Promise((resolve) => setTimeout(resolve, 500))
+    }
+  }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Panel de Ejecución</h1>
+    <div className="max-w-6xl mx-auto space-y-6">
+      <h1 className="text-2xl font-bold text-gray-900">Panel de Ejecución de Simulación</h1>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-lg">
+          <p className="font-medium">Error</p>
+          <p className="text-sm">{error}</p>
+        </div>
+      )}
 
       <Card title="Control de Simulación">
         <div className="space-y-6">
-          <div>
-            <div className="flex justify-between mb-2">
-              <span className="text-sm font-medium text-gray-700">Progreso de Ejecución</span>
-              <span className="text-sm text-gray-600">{progress}%</span>
+          <ProgressBar
+            current={currentIteration}
+            total={totalIterations}
+            isRunning={isRunning}
+            label="Progreso de Simulación"
+          />
+
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="bg-gray-50 p-3 rounded-lg">
+              <p className="text-gray-600">Iteración Actual</p>
+              <p className="text-2xl font-bold text-primary-600">{currentIteration}</p>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-3">
-              <div
-                className="bg-primary-600 h-3 rounded-full transition-all duration-300"
-                style={{ width: `${progress}%` }}
-              />
+            <div className="bg-gray-50 p-3 rounded-lg">
+              <p className="text-gray-600">Total Iteraciones</p>
+              <p className="text-2xl font-bold text-primary-600">{totalIterations}</p>
             </div>
           </div>
 
-          <div className="flex gap-3">
-            <Button onClick={() => setIsRunning(!isRunning)}>
+          <div className="flex flex-wrap gap-3">
+            <Button onClick={handleRunStep} disabled={isLoading}>
+              {isLoading ? <RefreshCw size={20} className="mr-2 animate-spin" /> : <Play size={20} className="mr-2" />}
+              Ejecutar Paso
+            </Button>
+            <Button onClick={handleRunAll} disabled={isRunning || isLoading} variant="secondary">
+              <Play size={20} className="mr-2" />
+              Ejecutar Todo
+            </Button>
+            <Button onClick={handleStartStop} variant={isRunning ? "danger" : "secondary"}>
               {isRunning ? (
                 <>
                   <Pause size={20} className="mr-2" />
@@ -38,11 +107,11 @@ export const ExecutionPanelPage = () => {
               ) : (
                 <>
                   <Play size={20} className="mr-2" />
-                  Reanudar
+                  Continuar
                 </>
               )}
             </Button>
-            <Button variant="danger">
+            <Button onClick={stopSimulation} variant="danger" disabled={!isRunning}>
               <Square size={20} className="mr-2" />
               Detener
             </Button>
@@ -50,24 +119,24 @@ export const ExecutionPanelPage = () => {
         </div>
       </Card>
 
-      <Card title="Consola de Logs">
-        <div className="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm h-96 overflow-y-auto">
-          <p>[10:30:15] Iniciando simulación...</p>
-          <p>[10:30:16] Cargando grid 500x500</p>
-          <p>[10:30:17] Aplicando reglas iniciales</p>
-          <p>[10:30:20] Iteración 1/100 completada</p>
-          <p>[10:30:23] Iteración 5/100 completada</p>
-          <p>[10:30:25] Aplicando factores climáticos...</p>
-          <p>[10:30:28] Iteración 10/100 completada</p>
-          <p>[10:30:30] Evaluando convergencia...</p>
-          <p>[10:30:35] Iteración 15/100 completada</p>
-          <p>[10:30:40] Calculando métricas intermedias...</p>
-          <p className="text-yellow-400">[10:30:42] WARNING: Alta concentración detectada en zona norte</p>
-          <p>[10:30:45] Iteración 20/100 completada</p>
-          <p>[10:30:50] Aplicando ajustes de servicios...</p>
-          <p className="text-primary-400">[10:30:52] INFO: Simulación progresando normalmente (45%)</p>
+      <Card title="Estado de Celdas">
+        <div className="grid grid-cols-3 gap-4">
+          <div className="bg-primary-50 p-4 rounded-lg">
+            <p className="text-sm text-gray-600">Ocupadas</p>
+            <p className="text-3xl font-bold text-primary-600">-</p>
+          </div>
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <p className="text-sm text-gray-600">Vacías</p>
+            <p className="text-3xl font-bold text-gray-600">-</p>
+          </div>
+          <div className="bg-blue-50 p-4 rounded-lg">
+            <p className="text-sm text-gray-600">Total</p>
+            <p className="text-3xl font-bold text-blue-600">-</p>
+          </div>
         </div>
       </Card>
+
+      <LogConsole logs={logs} onClear={clearLogs} maxHeight="500px" />
     </div>
   )
 }
