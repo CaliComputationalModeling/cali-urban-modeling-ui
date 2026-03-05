@@ -14,16 +14,22 @@ export const LoginPage = () => {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
+    setError(null)
 
     try {
       await login(email, password)
       navigate(ROUTES.HOME)
-    } catch (error) {
-      console.error("Login error:", error)
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message)
+      } else {
+        setError("Ocurrió un error inesperado")
+      }
     } finally {
       setLoading(false)
     }
@@ -38,6 +44,12 @@ export const LoginPage = () => {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {error && (
+            <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg text-center">
+              {error}
+            </div>
+          )}
+
           <Input
             label="Email"
             type="email"

@@ -6,20 +6,32 @@ import { Button } from "@/shared/ui/Button"
 import { Table } from "@/shared/ui/Table"
 import { Modal } from "@/shared/ui/Modal"
 import { Input } from "@/shared/ui/Input"
-import { type User, UserRole, UserStatus } from "@/shared/types/user.types"
+import { type User } from "@/shared/types/user.types"
 import { Plus, Edit2, UserX } from "lucide-react"
 
 export const UserManagementPage = () => {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [users] = useState<User[]>([
-    { id: "1", name: "Juan Pérez", email: "juan@example.com", role: UserRole.ADMIN, status: UserStatus.ACTIVE },
-    { id: "2", name: "María García", email: "maria@example.com", role: UserRole.TECHNICIAN, status: UserStatus.ACTIVE },
+    { 
+      id: "1", 
+      name: "Juan Pérez", 
+      email: "juan@example.com", 
+      role: "admin", 
+      status: "active" 
+    },
+    { 
+      id: "2", 
+      name: "María García", 
+      email: "maria@example.com", 
+      role: "technician", 
+      status: "active" 
+    },
     {
       id: "3",
       name: "Carlos López",
       email: "carlos@example.com",
-      role: UserRole.FIELD_WORKER,
-      status: UserStatus.ACTIVE,
+      role: "field_worker",
+      status: "active",
     },
   ])
 
@@ -29,7 +41,9 @@ export const UserManagementPage = () => {
     {
       header: "Rol",
       accessor: (row: User) => (
-        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-primary-100 text-primary-800">{row.role}</span>
+        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-primary-100 text-primary-800">
+          {row.role}
+        </span>
       ),
     },
     {
@@ -37,7 +51,7 @@ export const UserManagementPage = () => {
       accessor: (row: User) => (
         <span
           className={`px-2 py-1 text-xs font-semibold rounded-full ${
-            row.status === UserStatus.ACTIVE ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+            row.status === "active" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
           }`}
         >
           {row.status}
@@ -92,10 +106,10 @@ export const UserManagementPage = () => {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Rol</label>
             <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500">
-              <option>Administrador</option>
-              <option>Técnico</option>
-              <option>Trabajador de Campo</option>
-              <option>Visualizador</option>
+              <option value="admin">Administrador</option>
+              <option value="technician">Técnico</option>
+              <option value="field_worker">Trabajador de Campo</option>
+              <option value="foundation_head">Jefe de Fundación</option>
             </select>
           </div>
           <Input label="Contraseña" type="password" placeholder="••••••••" />
