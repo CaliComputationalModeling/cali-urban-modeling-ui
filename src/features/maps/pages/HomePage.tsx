@@ -5,16 +5,30 @@ import { Button } from "@/shared/ui/Button"
 import { useNavigate } from "react-router-dom"
 import { ROUTES } from "@/shared/constants/routes"
 import { Plus, Play, Settings, Database, BarChart3, Map } from "lucide-react"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useSimulationStore } from "@/store/simulationStore"
+import { CellularAutomataMap } from "@/features/maps/components/CellularAutomataMap"
+import { useDemoSimulation } from "@/shared/hooks/useDemoSimulation"
 
 export const HomePage = () => {
   const navigate = useNavigate()
   const { addLog, currentSimulation } = useSimulationStore()
+  const [demoSimulationId, setDemoSimulationId] = useState<string | undefined>(undefined)
+  const { createDemoSimulation, isCreating } = useDemoSimulation()
 
   useEffect(() => {
     addLog("Página de inicio cargada", "info")
   }, [])
+
+  const handleCreateDemo = async (pattern: 'blinker' | 'glider' | 'random' = 'blinker') => {
+    const simulation = await createDemoSimulation(pattern)
+    if (simulation) {
+      setDemoSimulationId(simulation.simulation_id)
+      addLog(`Simulación demo creada: ${simulation.name}`, 'success')
+    } else {
+      addLog('Error al crear la simulación demo', 'error')
+    }
+  }
 
   const quickActions = [
     {
@@ -102,24 +116,60 @@ export const HomePage = () => {
         </div>
       </div>
 
-      {/* Visualización principal */}
-      <Card title="Mapa Principal - Vista Previa">
-        <div className="relative h-80 bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg overflow-hidden border border-gray-300">
-          <div className="absolute inset-0 flex items-center justify-center text-gray-500">
-            <div className="text-center">
-              <Map size={48} className="mx-auto mb-3 opacity-50" />
-              <p className="text-lg font-medium mb-2">Mapa de Cali</p>
-              <p className="text-sm">Área urbana y grid de simulación</p>
+      {/* Visualización principal - Autómata Celular sobre el Mapa */}
+      <Card title="Simulación de Autómata Celular - Visualización en Vivo">
+        <div className="space-y-4">
+          {demoSimulationId ? (
+            <CellularAutomataMap
+              simulationId={demoSimulationId}
+              updateInterval={1000}
+              autoPlay={false}
+              onSimulationUpdate={(data) => {
+                addLog(`Generación ${data.generation}: ${data.grid.alive_cells} celdas vivas`, 'info')
+              }}
+            />
+          ) : (
+            <div className="relative h-80 bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg overflow-hidden border border-gray-300 flex items-center justify-center">
+              <div className="text-center">
+                <Map size={48} className="mx-auto mb-3 opacity-50" />
+                <p className="text-lg font-medium mb-2">Mapa de Cali - Autómata Celular</p>
+                <p className="text-sm text-gray-600 mb-4">Carga una simulación para visualizar el autómata en tiempo real</p>
+                <div className="flex gap-2 justify-center flex-wrap mb-4">
+                  <Button
+                    onClick={() => handleCreateDemo('blinker')}
+                    disabled={isCreating}
+                    className="mr-2"
+                  >
+                    <Play size={16} className="mr-2" />
+                    Demo: Blinker
+                  </Button>
+                  <Button
+                    onClick={() => handleCreateDemo('glider')}
+                    disabled={isCreating}
+                    className="mr-2"
+                  >
+                    <Play size={16} className="mr-2" />
+                    Demo: Glider
+                  </Button>
+                  <Button
+                    onClick={() => handleCreateDemo('random')}
+                    disabled={isCreating}
+                    variant="secondary"
+                  >
+                    <Play size={16} className="mr-2" />
+                    Demo: Aleatorio
+                  </Button>
+                </div>
+                <Button
+                  variant="secondary"
+                  onClick={() => navigate(ROUTES.OBSERVATION_NEW)}
+                >
+                  <Plus size={20} className="mr-2" />
+                  Agregar Observación
+                </Button>
+              </div>
             </div>
-          </div>
-
-          <Button
-            className="absolute bottom-6 right-6 shadow-lg"
-            onClick={() => navigate(ROUTES.OBSERVATION_NEW)}
-          >
-            <Plus size={20} className="mr-2" />
-            Agregar Observación
-          </Button>
+          )}
         </div>
       </Card>
 

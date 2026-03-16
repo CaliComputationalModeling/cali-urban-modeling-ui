@@ -46,7 +46,7 @@ export const UserManagementPage = () => {
     },
     {
       header: "Acciones",
-      accessor: (row: User) => (
+      accessor: () => (
         <div className="flex gap-2">
           <button className="text-primary-600 hover:text-primary-800">
             <Edit2 size={18} />

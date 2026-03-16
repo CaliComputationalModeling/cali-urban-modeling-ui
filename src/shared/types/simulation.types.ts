@@ -23,10 +23,13 @@ export interface SimulationConfig {
 }
 
 export interface SimulationParameters {
-  climate: number
-  security: number
-  services: number
-  mobility: number
+  climate?: number
+  security?: number
+  services?: number
+  mobility?: number
+  cellSize?: string
+  depth?: number
+  [key: string]: any
 }
 
 // Estado de simulación
@@ -52,6 +55,7 @@ export interface Simulation {
   config: SimulationConfig
   currentIteration: number
   totalIterations: number
+  parameters?: SimulationParameters
   results?: SimulationResults
 }
 

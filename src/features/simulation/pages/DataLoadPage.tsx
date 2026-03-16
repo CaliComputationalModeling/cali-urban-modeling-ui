@@ -5,6 +5,7 @@ import { Upload, RefreshCw, Check } from "lucide-react"
 import { useSimulationStore } from "@/store/simulationStore"
 import { LogConsole } from "@/shared/ui/LogConsole"
 import { GridViewer } from "@/shared/ui/GridViewer"
+import type { CellDTO } from "@/shared/types/api.dtos"
 
 export const DataLoadPage = () => {
   const { currentSimulation, isLoading, addLog, fetchCells, clearLogs, logs } = useSimulationStore()
@@ -39,7 +40,7 @@ export const DataLoadPage = () => {
   }
 
   const cellCount = currentSimulation?.cells?.length || 0
-  const occupiedCount = currentSimulation?.cells?.filter((c) => c.state === 1).length || 0
+  const occupiedCount = currentSimulation?.cells?.filter((c: CellDTO) => c.state === 1).length || 0
 
   return (
     <div className="space-y-6">

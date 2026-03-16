@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Card } from "@/shared/ui/Card"
 import { Button } from "@/shared/ui/Button"
 import { Save, AlertCircle } from "lucide-react"

@@ -23,7 +23,7 @@ export const ReportCenterPage = () => {
     { header: "Tipo", accessor: "type" as keyof Report },
     {
       header: "Acciones",
-      accessor: (row: Report) => (
+      accessor: () => (
         <Button size="sm" variant="secondary">
           <Download size={16} className="mr-1" />
           Descargar
