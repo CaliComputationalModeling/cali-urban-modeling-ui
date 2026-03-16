@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, ShieldCheck, Loader2 } from 'lucide-react';
+import { X, ShieldCheck, Loader2, Eye, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import http from '@/services/http';
 
@@ -9,14 +9,28 @@ interface Props {
   onSuccess: () => void;
 }
 
+function getPasswordStrength(password: string): { level: number; label: string } {
+  if (!password) return { level: 0, label: '' };
+  let score = 0;
+  if (password.length >= 8) score++;
+  if (/[A-Z]/.test(password)) score++;
+  if (/[0-9]/.test(password)) score++;
+  if (/[^A-Za-z0-9]/.test(password)) score++;
+  const labels = ['', 'Débil', 'Regular', 'Buena', 'Fuerte'];
+  return { level: score, label: labels[score] };
+}
+
 export const CreateUserSheet: React.FC<Props> = ({ isOpen, onClose, onSuccess }) => {
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
     nombre_completo: '',
-    rol_id: 1
+    rol_id: 5,
   });
+
+  const strength = getPasswordStrength(formData.password);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,6 +41,7 @@ export const CreateUserSheet: React.FC<Props> = ({ isOpen, onClose, onSuccess })
         onSuccess();
         onClose();
         setFormData({ email: '', password: '', nombre_completo: '', rol_id: 5 });
+        setShowPassword(false);
       }
     } catch (err) {
       console.error(err);
@@ -39,108 +54,92 @@ export const CreateUserSheet: React.FC<Props> = ({ isOpen, onClose, onSuccess })
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Overlay - Bloquea el fondo y oscurece */}
           <motion.div
+            className="sidesheet-overlay"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            style={{
-              position: 'fixed',
-              inset: 0,
-              backgroundColor: 'rgba(10, 12, 16, 0.7)',
-              backdropFilter: 'blur(4px)',
-              zIndex: 998
-            }}
           />
 
-          {/* Panel Lateral Deslizante */}
           <motion.div
+            className="sidesheet-panel"
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
-            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            style={{
-              position: 'fixed',
-              right: 0,
-              top: 0,
-              height: '100vh',
-              width: '100%',
-              maxWidth: '450px',
-              backgroundColor: '#ffffff',
-              zIndex: 999,
-              display: 'flex',
-              flexDirection: 'column',
-              boxShadow: '-10px 0 50px rgba(0,0,0,0.3)',
-              color: '#1a3a52'
-            }}
+            transition={{ type: 'spring', damping: 28, stiffness: 220 }}
           >
-            {/* Header del SideSheet */}
-            <div style={{ padding: '40px', borderBottom: '1px solid #f1f3f5', backgroundColor: '#f8f9fa' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <p style={{ fontSize: '10px', fontWeight: 800, color: 'var(--color-accent)', letterSpacing: '2px', marginBottom: '8px' }}>
-                    SISTEMA_OPERATIVO / SEGURIDAD
-                  </p>
-                  <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '28px', fontStyle: 'italic', margin: 0 }}>
-                    Nuevo Operador
-                  </h2>
-                </div>
-                <button 
-                  onClick={onClose}
-                  style={{ background: '#eee', border: 'none', borderRadius: '50%', padding: '8px', cursor: 'pointer', display: 'flex' }}
-                >
-                  <X size={20} color="#666" />
+            {/* Header */}
+            <div className="sidesheet-header">
+              <p className="sidesheet-eyebrow">Sistema Operativo / Seguridad</p>
+              <div className="sidesheet-title-row">
+                <h2 className="sidesheet-title">Nuevo Operador</h2>
+                <button className="sidesheet-close" onClick={onClose} aria-label="Cerrar">
+                  <X size={18} />
                 </button>
               </div>
             </div>
 
-            {/* Formulario */}
-            <form onSubmit={handleSubmit} style={{ padding: '40px', flex: 1, overflowY: 'auto' }}>
-              <div style={{ marginBottom: '24px' }}>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#94a3b8', marginBottom: '8px', letterSpacing: '1px' }}>
-                  NOMBRE COMPLETO
-                </label>
+            {/* Form */}
+            <form onSubmit={handleSubmit} className="sidesheet-body">
+              <div className="sheet-form-group">
+                <label className="sheet-form-label">Nombre Completo</label>
                 <input
                   required
-                  style={{ width: '100%', padding: '14px', borderRadius: '10px', border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '15px' }}
-                  placeholder="Ej. David Gutierrez"
+                  className="sheet-input"
+                  placeholder="Ej. David Gutiérrez"
+                  value={formData.nombre_completo}
                   onChange={e => setFormData({ ...formData, nombre_completo: e.target.value })}
                 />
               </div>
 
-              <div style={{ marginBottom: '24px' }}>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#94a3b8', marginBottom: '8px', letterSpacing: '1px' }}>
-                  EMAIL CORPORATIVO
-                </label>
+              <div className="sheet-form-group">
+                <label className="sheet-form-label">Email Corporativo</label>
                 <input
                   required
                   type="email"
-                  style={{ width: '100%', padding: '14px', borderRadius: '10px', border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '15px' }}
+                  className="sheet-input"
                   placeholder="usuario@simcore.io"
+                  value={formData.email}
                   onChange={e => setFormData({ ...formData, email: e.target.value })}
                 />
               </div>
 
-              <div style={{ marginBottom: '24px' }}>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#94a3b8', marginBottom: '8px', letterSpacing: '1px' }}>
-                  CONTRASEÑA DE ACCESO
-                </label>
-                <input
-                  required
-                  type="password"
-                  style={{ width: '100%', padding: '14px', borderRadius: '10px', border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '15px' }}
-                  placeholder="••••••••"
-                  onChange={e => setFormData({ ...formData, password: e.target.value })}
-                />
+              <div className="sheet-form-group">
+                <label className="sheet-form-label">Contraseña de Acceso</label>
+                <div className="password-wrapper">
+                  <input
+                    required
+                    type={showPassword ? 'text' : 'password'}
+                    className="sheet-input"
+                    placeholder="••••••••"
+                    value={formData.password}
+                    onChange={e => setFormData({ ...formData, password: e.target.value })}
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle"
+                    onClick={() => setShowPassword(!showPassword)}
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+                {formData.password && (
+                  <div className="password-strength">
+                    <div className="strength-bar-track">
+                      <div className={`strength-bar-fill strength-${strength.level}`} />
+                    </div>
+                    <span className="strength-label">{strength.label}</span>
+                  </div>
+                )}
               </div>
 
-              <div style={{ marginBottom: '40px' }}>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#94a3b8', marginBottom: '8px', letterSpacing: '1px' }}>
-                  NIVEL DE AUTORIZACIÓN
-                </label>
+              <div className="sheet-form-group" style={{ marginBottom: 40 }}>
+                <label className="sheet-form-label">Nivel de Autorización</label>
                 <select
-                  style={{ width: '100%', padding: '14px', borderRadius: '10px', border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '15px', cursor: 'pointer' }}
+                  className="sheet-select"
+                  value={formData.rol_id}
                   onChange={e => setFormData({ ...formData, rol_id: Number(e.target.value) })}
                 >
                   <option value={1}>Administrador del Sistema</option>
@@ -152,28 +151,14 @@ export const CreateUserSheet: React.FC<Props> = ({ isOpen, onClose, onSuccess })
               </div>
 
               <button
-                disabled={isLoading}
                 type="submit"
-                style={{
-                  width: '100%',
-                  padding: '18px',
-                  backgroundColor: 'var(--color-accent)',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '12px',
-                  fontWeight: 700,
-                  fontSize: '14px',
-                  letterSpacing: '1px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '10px',
-                  boxShadow: '0 10px 20px rgba(0, 217, 255, 0.2)'
-                }}
+                disabled={isLoading}
+                className="sheet-submit"
               >
-                {isLoading ? <Loader2 className="animate-spin" size={20} /> : <ShieldCheck size={20} />}
-                Crear Usuario
+                {isLoading
+                  ? <><Loader2 size={18} style={{ animation: 'spin 0.8s linear infinite' }} /> Creando...</>
+                  : <><ShieldCheck size={18} /> Crear Operador</>
+                }
               </button>
             </form>
           </motion.div>

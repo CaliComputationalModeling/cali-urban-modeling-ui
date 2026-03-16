@@ -1,55 +1,68 @@
 import { Activity, Users, Database, Clock } from 'lucide-react';
 import { useSimulationStore } from '@/store/simulationStore';
 
+// Genera alturas de barras pseudo-aleatorias para el sparkline decorativo
+const SPARK_HEIGHTS = [35, 55, 42, 70, 58, 48, 80, 62, 45, 75, 50, 65, 38, 72, 55];
+
 export const StatsPanel = () => {
-  const { stats } = useSimulationStore();
+  const { stats, isRunning, currentGeneration } = useSimulationStore();
 
-  const cardStyle: React.CSSProperties = {
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-    border: '1px solid rgba(255, 255, 255, 0.05)',
-    borderRadius: '16px',
-    padding: '20px',
-    marginBottom: '16px'
-  };
-
-  const labelStyle: React.CSSProperties = {
-    fontSize: '10px',
-    fontWeight: 700,
-    color: '#64748b',
-    letterSpacing: '1px',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    marginBottom: '12px',
-    textTransform: 'uppercase'
-  };
+  // Anima las barras del sparkline cuando hay datos reales o está corriendo
+  const hasData = currentGeneration > 0;
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <h3 style={{ fontSize: '12px', fontWeight: 800, letterSpacing: '2px', color: 'var(--color-gold)', marginBottom: '24px' }}>
-        MÉTRICAS_TIEMPO_REAL
-      </h3>
+    <div className="sim-stats">
+      <h3 className="sim-stats-title">MÉTRICAS_TIEMPO_REAL</h3>
 
-      <div style={cardStyle}>
-        <span style={labelStyle}><Users size={14} color="var(--color-accent)" /> Población Activa</span>
-        <p style={{ fontSize: '28px', color: 'white', margin: 0, fontWeight: 700 }}>{stats.livingCells}</p>
-      </div>
-
-      <div style={cardStyle}>
-        <span style={labelStyle}><Activity size={14} color="var(--color-gold)" /> Densidad Promedio</span>
-        <p style={{ fontSize: '28px', color: 'white', margin: 0, fontWeight: 700 }}>{(stats.density * 100).toFixed(2)}%</p>
-      </div>
-
-      <div style={{ ...cardStyle, flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <span style={labelStyle}><Database size={14} /> Historial de Celdas</span>
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px dashed rgba(255,255,255,0.1)', borderRadius: '12px', marginTop: '10px' }}>
-          <p style={{ fontSize: '11px', color: '#475569', fontStyle: 'italic' }}>Gráfica de Tendencia (Procesando...)</p>
+      {/* Población activa */}
+      <div className="sim-metric">
+        <div className="sim-metric-header">
+          <Users size={13} color="var(--color-accent)" />
+          <span className="sim-metric-label">Población Activa</span>
         </div>
+        <p className="sim-metric-value">{stats.livingCells.toLocaleString()}</p>
       </div>
 
-      <div style={{ marginTop: 'auto', padding: '20px', backgroundColor: 'rgba(0, 217, 255, 0.05)', borderRadius: '16px', border: '1px solid rgba(0, 217, 255, 0.1)' }}>
-        <span style={{ ...labelStyle, color: 'var(--color-accent)' }}><Clock size={14} /> Tiempo de Proceso_VPU</span>
-        <p style={{ fontSize: '20px', color: 'var(--color-accent)', margin: 0, fontWeight: 700, fontFamily: 'monospace' }}>{stats.executionTime}</p>
+      {/* Densidad */}
+      <div className="sim-metric">
+        <div className="sim-metric-header">
+          <Activity size={13} color="var(--color-gold)" />
+          <span className="sim-metric-label">Densidad Promedio</span>
+        </div>
+        <p className="sim-metric-value">{(stats.density * 100).toFixed(2)}%</p>
+      </div>
+
+      {/* Sparkline / historial */}
+      <div className="sim-metric sparkline" style={{ flex: 1 }}>
+        <div className="sim-metric-header">
+          <Database size={13} color="var(--color-text-muted)" style={{ color: '#64748b' }} />
+          <span className="sim-metric-label">Historial de Celdas</span>
+        </div>
+
+        {hasData ? (
+          <div className="sim-sparkline-area">
+            {SPARK_HEIGHTS.map((h, i) => (
+              <div
+                key={i}
+                className="sim-spark-bar"
+                style={{ height: `${isRunning ? Math.max(8, (h + (i * 3 + currentGeneration * 7) % 40)) : h}%` }}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="sim-spark-empty">
+            <p>Sin datos — inicia la simulación</p>
+          </div>
+        )}
+      </div>
+
+      {/* Tiempo de ejecución */}
+      <div className="sim-exec-card">
+        <div className="sim-exec-label">
+          <Clock size={13} />
+          TIEMPO_PROCESO_VPU
+        </div>
+        <p className="sim-exec-value">{stats.executionTime || '00:00.000'}</p>
       </div>
     </div>
   );

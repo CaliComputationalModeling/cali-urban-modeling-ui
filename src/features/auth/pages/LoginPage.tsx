@@ -2,12 +2,14 @@
 
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Eye, EyeOff } from 'lucide-react'
 import http from '../../../services/http'
 
 export const LoginPage = () => {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -17,7 +19,6 @@ export const LoginPage = () => {
     setIsLoading(true)
 
     try {
-      // ✅ USAR TU CLIENTE HTTP
       const { data, ok } = await http.post<{
         rol: string
         user_id: string
@@ -40,6 +41,7 @@ export const LoginPage = () => {
 
   return (
     <div className="login-container">
+      {/* Left Panel */}
       <div className="left-panel">
         <div>
           <div className="logo-box">
@@ -64,19 +66,14 @@ export const LoginPage = () => {
           </p>
         </div>
 
-        <div>
-          <p className="footer-text">
-            © 2025 SIMCORE - Todos los derechos reservados
-          </p>
-        </div>
+        <p className="footer-text">© 2025 SIMCORE — Todos los derechos reservados</p>
       </div>
 
+      {/* Right Panel */}
       <div className="right-panel">
         <div className="form-wrapper">
           <div className="mobile-logo">
-            <h1>
-              <span className="mobile-logo-accent">SIM</span>CORE
-            </h1>
+            <h1><span className="mobile-logo-accent">SIM</span>CORE</h1>
           </div>
 
           <div className="form-card">
@@ -88,6 +85,9 @@ export const LoginPage = () => {
 
             {error && (
               <div className="error-alert">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, color: '#dc2626' }}>
+                  <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
                 <p className="error-text">{error}</p>
               </div>
             )}
@@ -108,21 +108,33 @@ export const LoginPage = () => {
 
               <div className="form-group">
                 <label className="form-label">Contraseña</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  disabled={isLoading}
-                  placeholder="••••••••"
-                  className="form-input"
-                />
+                <div className="password-wrapper">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    disabled={isLoading}
+                    placeholder="••••••••"
+                    className="form-input"
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle"
+                    onClick={() => setShowPassword(!showPassword)}
+                    tabIndex={-1}
+                    aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
               </div>
 
               <button
                 type="submit"
                 disabled={isLoading}
                 className="submit-button"
+                style={{ marginTop: '8px' }}
               >
                 {isLoading ? (
                   <>
@@ -142,7 +154,7 @@ export const LoginPage = () => {
             </form>
 
             <div className="version-footer">
-              <p className="version-text">v1.0.0 • Sistema Seguro</p>
+              <p className="version-text">v1.0.0 · Sistema Seguro</p>
             </div>
           </div>
         </div>

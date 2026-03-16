@@ -1,64 +1,47 @@
 import { useState } from 'react';
-import { Database, FolderOpen } from 'lucide-react';
+import { Database, CheckCircle2, FolderOpen } from 'lucide-react';
 import { useSimulationStore } from '@/store/simulationStore';
 
 export const SimulationLoader = () => {
-  const [inputTitle, setInputTitle] = useState("");
+  const [inputTitle, setInputTitle] = useState('');
   const setSimulationId = useSimulationStore(state => state.setSimulationId);
-  const simulationId = useSimulationStore(state => state.simulationId);
+  const simulationId    = useSimulationStore(state => state.simulationId);
 
   const handleInit = () => {
-    if (!inputTitle) return;
-    // Aquí podrías hacer un post al backend para crear la simulación
-    // Por ahora, seteamos el ID para habilitar el sistema
-    setSimulationId(inputTitle);
+    if (!inputTitle.trim()) return;
+    setSimulationId(inputTitle.trim());
   };
 
+  const isConnected = Boolean(simulationId);
+
   return (
-    <div style={{ 
-      backgroundColor: '#11141b', 
-      padding: '20px', 
-      borderRadius: '16px', 
-      border: '1px solid var(--color-accent)',
-      marginBottom: '24px',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '20px'
-    }}>
-      <div style={{ color: 'var(--color-accent)' }}><Database size={24} /></div>
-      <div style={{ flex: 1 }}>
-        <p style={{ color: 'white', fontSize: '12px', fontWeight: 700, margin: 0 }}>CARGAR ESCENARIO DE TESIS</p>
-        <input 
-          placeholder="Ingrese ID de Simulación (ej: CALI_CENTRO_01)"
-          value={inputTitle}
-          onChange={(e) => setInputTitle(e.target.value)}
-          style={{ 
-            background: 'transparent', 
-            border: 'none', 
-            color: 'var(--color-accent)', 
-            width: '100%',
-            outline: 'none',
-            fontFamily: 'monospace',
-            fontSize: '14px'
-          }}
+    <div className={`sim-loader ${isConnected ? 'connected' : ''}`}>
+      <div className="sim-loader-icon">
+        {isConnected ? <CheckCircle2 size={22} /> : <Database size={22} />}
+      </div>
+
+      <div className="sim-loader-body">
+        <p className="sim-loader-label">CARGAR ESCENARIO</p>
+        <input
+          className="sim-loader-input"
+          placeholder="ID de simulación — ej: CALI_CENTRO_01"
+          value={isConnected ? simulationId! : inputTitle}
+          onChange={(e) => !isConnected && setInputTitle(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && !isConnected && handleInit()}
+          disabled={isConnected}
+          readOnly={isConnected}
         />
       </div>
-      <button 
-        onClick={handleInit}
-        style={{
-          backgroundColor: simulationId ? '#10b981' : 'var(--color-accent)',
-          color: 'black',
-          border: 'none',
-          padding: '10px 20px',
-          borderRadius: '8px',
-          fontWeight: 800,
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px'
-        }}
+
+      <button
+        onClick={isConnected ? undefined : handleInit}
+        disabled={isConnected}
+        className={`sim-loader-btn ${isConnected ? 'connected' : ''}`}
       >
-        {simulationId ? 'CONECTADO' : 'INICIALIZAR'} <FolderOpen size={16} />
+        {isConnected
+          ? <><CheckCircle2 size={15} /> CONECTADO</>
+          : <><FolderOpen size={15} /> INICIALIZAR</>
+        }
       </button>
     </div>
   );
