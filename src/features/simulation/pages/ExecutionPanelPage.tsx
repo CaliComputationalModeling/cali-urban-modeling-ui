@@ -10,6 +10,7 @@ import { LogConsole } from "@/shared/ui/LogConsole"
 
 export const ExecutionPanelPage = () => {
   const {
+    currentSimulation,
     isRunning,
     currentIteration,
     totalIterations,
@@ -20,43 +21,74 @@ export const ExecutionPanelPage = () => {
     stopSimulation,
     startSimulation,
     clearLogs,
-    fetchCells,
     addLog,
   } = useSimulationStore()
 
-  // Cargar celdas iniciales al montar
+  // El "Motor" de Auto-Ejecución
+  // Este useEffect vigila si la simulación está corriendo y pide el siguiente paso automáticamente
   useEffect(() => {
-    fetchCells()
-    addLog("Panel de ejecución cargado", "info")
-  }, [])
+    let timeoutId: NodeJS.Timeout;
+    
+    const executeNextStep = async () => {
+      // Si está corriendo y no hemos llegado al límite
+      if (isRunning && currentIteration < totalIterations) {
+        await runStep(1);
+        // Esperamos 500ms entre cada paso para que puedas ver el cambio (puedes ajustar este tiempo)
+        timeoutId = setTimeout(executeNextStep, 500);
+      } else if (currentIteration >= totalIterations && isRunning) {
+        stopSimulation();
+        addLog("Simulación completada: se alcanzó el límite de iteraciones", "success");
+      }
+    };
 
-  const handleStartStop = async () => {
+    if (isRunning) {
+      executeNextStep();
+    }
+
+    // Limpiamos el timeout si el componente se desmonta o la simulación se pausa
+    return () => clearTimeout(timeoutId);
+  }, [isRunning, currentIteration, totalIterations, runStep, stopSimulation, addLog]);
+
+  const handleStartStop = () => {
+    if (!currentSimulation?.id) {
+      addLog("Debes cargar una simulación en la pestaña 'Carga de Datos' primero", "warning");
+      return;
+    }
+    
     if (isRunning) {
       stopSimulation()
     } else {
-      startSimulation({ id: "default", name: "Simulación", version: "1.0", date: new Date().toISOString(), status: "running" as any, cells: [], config: { gridConfig: { width: 50, height: 50, cellSize: "10x10m" }, iterations: totalIterations, parameters: { climate: 0, security: 0, services: 0, mobility: 0 } }, currentIteration: 0, totalIterations })
+      // Iniciamos sin pasar datos quemados, para que use la simulación activa del store
+      startSimulation() 
     }
   }
 
   const handleRunStep = async () => {
-    if (!isRunning) {
-      startSimulation({ id: "default", name: "Simulación", version: "1.0", date: new Date().toISOString(), status: "running" as any, cells: [], config: { gridConfig: { width: 50, height: 50, cellSize: "10x10m" }, iterations: totalIterations, parameters: { climate: 0, security: 0, services: 0, mobility: 0 } }, currentIteration: 0, totalIterations })
+    if (!currentSimulation?.id) {
+      addLog("Debes cargar una simulación en la pestaña 'Carga de Datos' primero", "warning");
+      return;
     }
-    await runStep()
+    stopSimulation() // Pausamos la auto-ejecución si el usuario hace clic manual
+    await runStep(1)
   }
 
-  const handleRunAll = async () => {
-    if (isRunning || isLoading) return
-
-    startSimulation({ id: "default", name: "Simulación", version: "1.0", date: new Date().toISOString(), status: "running" as any, cells: [], config: { gridConfig: { width: 50, height: 50, cellSize: "10x10m" }, iterations: totalIterations, parameters: { climate: 0, security: 0, services: 0, mobility: 0 } }, currentIteration: 0, totalIterations })
-    
-    // Simular múltiples pasos
-    for (let i = 0; i < 5; i++) {
-      if (!isRunning) break
-      await runStep()
-      await new Promise((resolve) => setTimeout(resolve, 500))
+  const handleRunAll = () => {
+    if (!currentSimulation?.id) {
+      addLog("Debes cargar una simulación en la pestaña 'Carga de Datos' primero", "warning");
+      return;
     }
+    // Simplemente activamos el estado isRunning, el useEffect se encargará del loop
+    startSimulation()
   }
+
+  // Cálculos dinámicos del estado de las celdas
+  // Si tu backend solo devuelve celdas vivas, totalCells será igual a occupiedCount
+  const totalCellsInMemory = currentSimulation?.cells?.length || 0;
+  const occupiedCount = currentSimulation?.cells?.filter((c) => c.state === 1).length || 0;
+  
+  // Asumiendo una grilla de 50x50 como configuramos en DataLoadPage (2500 celdas totales)
+  const gridSize = 50 * 50; 
+  const emptyCount = currentSimulation?.id ? (gridSize - occupiedCount) : 0;
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -84,21 +116,21 @@ export const ExecutionPanelPage = () => {
               <p className="text-2xl font-bold text-primary-600">{currentIteration}</p>
             </div>
             <div className="bg-gray-50 p-3 rounded-lg">
-              <p className="text-gray-600">Total Iteraciones</p>
+              <p className="text-gray-600">Total Iteraciones Máximas</p>
               <p className="text-2xl font-bold text-primary-600">{totalIterations}</p>
             </div>
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <Button onClick={handleRunStep} disabled={isLoading}>
+            <Button onClick={handleRunStep} disabled={isLoading || isRunning}>
               {isLoading ? <RefreshCw size={20} className="mr-2 animate-spin" /> : <Play size={20} className="mr-2" />}
-              Ejecutar Paso
+              Ejecutar 1 Paso
             </Button>
-            <Button onClick={handleRunAll} disabled={isRunning || isLoading} variant="secondary">
+            <Button onClick={handleRunAll} disabled={isRunning || isLoading || !currentSimulation?.id} variant="secondary">
               <Play size={20} className="mr-2" />
-              Ejecutar Todo
+              Auto-Ejecutar
             </Button>
-            <Button onClick={handleStartStop} variant={isRunning ? "danger" : "secondary"}>
+            <Button onClick={handleStartStop} disabled={!currentSimulation?.id} variant={isRunning ? "danger" : "secondary"}>
               {isRunning ? (
                 <>
                   <Pause size={20} className="mr-2" />
@@ -119,19 +151,25 @@ export const ExecutionPanelPage = () => {
         </div>
       </Card>
 
-      <Card title="Estado de Celdas">
+      <Card title="Estado de Celdas (Tiempo Real)">
         <div className="grid grid-cols-3 gap-4">
-          <div className="bg-primary-50 p-4 rounded-lg">
-            <p className="text-sm text-gray-600">Ocupadas</p>
-            <p className="text-3xl font-bold text-primary-600">-</p>
+          <div className="bg-primary-50 p-4 rounded-lg transition-colors">
+            <p className="text-sm text-gray-600">Ocupadas (Vivas)</p>
+            <p className="text-3xl font-bold text-primary-600">
+              {currentSimulation?.id ? occupiedCount : "-"}
+            </p>
           </div>
-          <div className="bg-gray-50 p-4 rounded-lg">
+          <div className="bg-gray-50 p-4 rounded-lg transition-colors">
             <p className="text-sm text-gray-600">Vacías</p>
-            <p className="text-3xl font-bold text-gray-600">-</p>
+            <p className="text-3xl font-bold text-gray-600">
+              {currentSimulation?.id ? emptyCount : "-"}
+            </p>
           </div>
-          <div className="bg-blue-50 p-4 rounded-lg">
-            <p className="text-sm text-gray-600">Total</p>
-            <p className="text-3xl font-bold text-blue-600">-</p>
+          <div className="bg-blue-50 p-4 rounded-lg transition-colors">
+            <p className="text-sm text-gray-600">Celdas en Memoria</p>
+            <p className="text-3xl font-bold text-blue-600">
+              {currentSimulation?.id ? totalCellsInMemory : "-"}
+            </p>
           </div>
         </div>
       </Card>

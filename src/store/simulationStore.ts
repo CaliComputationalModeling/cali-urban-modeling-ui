@@ -16,8 +16,8 @@ interface SimulationState {
   // Acciones
   setCurrentSimulation: (simulation: Simulation) => void
   fetchCells: () => Promise<void>
-  runStep: () => Promise<void>
-  startSimulation: (simulation: Simulation) => void
+  runStep: (generations?: number) => Promise<void> // <- Modificado para aceptar N generaciones
+  startSimulation: (simulation?: Simulation) => void // <- Modificado para ser opcional
   stopSimulation: () => void
   updateProgress: (current: number, total: number) => void
   addLog: (message: string, level?: 'info' | 'warning' | 'error' | 'success') => void
@@ -32,7 +32,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   simulations: [],
   isRunning: false,
   currentIteration: 0,
-  totalIterations: 100,
+  totalIterations: 100, // Puedes ajustar esto según el límite de tu simulación
   logs: [],
   error: null,
   isLoading: false,
@@ -43,6 +43,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   fetchCells: async () => {
     set({ isLoading: true, error: null })
     try {
+      // Nota: asumiendo que simulationService.fetchCells() existe para obtener datos iniciales masivos
       const cells = await simulationService.fetchCells()
       get().addLog(`Celdas cargadas: ${cells.length} elementos`, 'success')
       set({ isLoading: false })
@@ -53,31 +54,64 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
     }
   },
 
-  runStep: async () => {
+  runStep: async (generations = 1) => {
     const state = get()
-    set({ isRunning: true, error: null })
+    const activeSimId = state.currentSimulation?.id
+
+    if (!activeSimId) {
+      get().addLog('Error: No hay una simulación cargada en el backend. Carga los datos primero.', 'error')
+      return
+    }
+
+    set({ isLoading: true, error: null })
+    
     try {
-      const updatedCells = await simulationService.runStep()
-      const newIteration = state.currentIteration + 1
-      set({ currentIteration: newIteration })
-      get().addLog(`Paso ${newIteration} completado - Celdas: ${updatedCells?.length || 0}`, 'success')
+      // 1. Ejecutamos el cálculo en el backend
+      await simulationService.runSimulationStep(activeSimId, generations)
+      
+      // 2. Traemos el nuevo estado de la grilla
+      const updatedData = await simulationService.getSimulation(activeSimId)
+      
+      // 3. Formateamos las celdas para que coincidan con la interfaz Cell de React
+      const formattedCells: Cell[] = updatedData.grid.cells.map((c: any) => ({
+        position: { x: c.position.x, y: c.position.y },
+        state: c.state
+      }))
+
+      // 4. Actualizamos el estado de Zustand
+      set({ 
+        currentIteration: updatedData.generation,
+        currentSimulation: {
+          ...state.currentSimulation!,
+          cells: formattedCells,
+          currentIteration: updatedData.generation
+        }
+      })
+      
+      get().addLog(`Generación ${updatedData.generation} calculada exitosamente`, 'success')
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al ejecutar paso'
       get().addLog(message, 'error')
-      set({ error: message })
+      // Si falla, detenemos la ejecución automática
+      set({ error: message, isRunning: false }) 
     } finally {
-      set({ isRunning: false })
+      set({ isLoading: false })
     }
   },
 
   startSimulation: (simulation) => {
-    set({ currentSimulation: simulation, isRunning: true, currentIteration: 0, logs: [] })
-    get().addLog('Simulación iniciada', 'info')
+    // Si se pasa una simulación, la seteamos. Si no, solo cambiamos isRunning a true para continuar.
+    if (simulation) {
+      set({ currentSimulation: simulation, isRunning: true, logs: [] })
+    } else {
+      set({ isRunning: true })
+    }
+    get().addLog('Simulación en marcha (Play)', 'info')
   },
 
   stopSimulation: () => {
     set({ isRunning: false })
-    get().addLog('Simulación detenida', 'info')
+    get().addLog('Simulación pausada', 'warning')
   },
 
   updateProgress: (current, total) => {
@@ -101,6 +135,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   setCells: async (cells) => {
     set({ isLoading: true, error: null })
     try {
+      // Nota: Asumiendo que esta función existe en tu service
       await simulationService.setCells(cells)
       get().addLog(`${cells.length} celdas establecidas`, 'success')
       set({ isLoading: false })
