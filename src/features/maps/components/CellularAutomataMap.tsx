@@ -26,10 +26,10 @@ const CELL_COLORS: Record<number, string> = {
 }
 
 // Coordenadas de Cali, Colombia
-const CALI_CENTER: [number, number] = [3.4372, -76.5325]
+const CALI_CENTER: [number, number] = [3.4516, -76.5320]
 const CALI_BOUNDS: [[number, number], [number, number]] = [
-  [3.2500, -76.2000],
-  [3.5500, -75.9000],
+  [3.3500, -76.2000],
+  [3.5500, -76.9000],
 ]
 
 /**

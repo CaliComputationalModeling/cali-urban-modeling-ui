@@ -177,7 +177,7 @@ export const HomePage = () => {
       <Card title="Orientación Rápida">
         <div className="space-y-3 text-sm text-gray-700">
           <div>
-            <p className="font-medium text-gray-900">📊 Paso 1: Cargar Datos</p>
+            <p className="font-medium text-gray-900">� Paso 1: Cargar Datos</p>
             <p className="text-gray-600 ml-6">Carga datos iniciales del grid urbano desde la sección "Carga de Datos"</p>
           </div>
           <div>
@@ -189,7 +189,7 @@ export const HomePage = () => {
             <p className="text-gray-600 ml-6">Ejecuta pasos individuales o toda la simulación desde el panel de ejecución</p>
           </div>
           <div>
-            <p className="font-medium text-gray-900">📈 Paso 4: Visualizar Resultados</p>
+            <p className="font-medium text-gray-900"> Paso 4: Visualizar Resultados</p>
             <p className="text-gray-600 ml-6">Analiza resultados en el dashboard ejecutivo y genera reportes</p>
           </div>
         </div>
