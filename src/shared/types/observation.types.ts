@@ -1,28 +1,22 @@
 export interface Observation {
-  id: string
-  type: ObservationType
-  description: string
-  photos: string[]
-  location: Location
-  date: string
-  status: ObservationStatus
-  userId: string
+  id: number;
+  usuario_id: number;
+  descripcion: string;
+  numero_personas: number;
+  estado_animo: string;
+  factores_detectados: Record<string, string | number | boolean>;
+  fecha_observacion: string;
+  fecha_registro: string;
+  latitud: number;
+  longitud: number;
 }
 
-export enum ObservationType {
-  CONCENTRATION = "concentration",
-  MIGRATION = "migration",
-  SERVICES = "services",
-  INCIDENT = "incident",
-}
-
-export enum ObservationStatus {
-  PENDING = "pending",
-  VALIDATED = "validated",
-  REJECTED = "rejected",
-}
-
-export interface Location {
-  lat: number
-  lng: number
+export interface ObservationCreate {
+  fecha_observacion: string;
+  latitud: number;
+  longitud: number;
+  numero_personas: number;
+  descripcion: string;
+  estado_animo: string;
+  factores_detectados: Record<string, string | number | boolean>;
 }

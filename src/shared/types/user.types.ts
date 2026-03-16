@@ -1,19 +1,27 @@
-export interface User {
-  id: string
-  name: string
-  email: string
-  role: UserRole
-  status: UserStatus
-}
-
 export enum UserRole {
-  ADMIN = "admin",
-  TECHNICIAN = "technician",
-  FIELD_WORKER = "field_worker",
-  VIEWER = "viewer",
+  ADMIN = 1,          // Administrador del sistema
+  COORDINATOR = 2,    // Coordinador técnico
+  TECHNICIAN = 3,     // Equipo técnico
+  FOUNDATION_HEAD = 4, // Jefe de fundación
+  FIELD_WORKER = 5,   // Trabajador de campo
 }
 
 export enum UserStatus {
   ACTIVE = "active",
   INACTIVE = "inactive",
+}
+
+export interface User {
+  id: number;       
+  nombre_completo: string; 
+  email: string;
+  rol_id: UserRole;    
+  status?: UserStatus;
+}
+
+export interface CreateUserPayload {
+  email: string;
+  password: string;
+  nombre_completo: string;
+  rol_id: number;
 }

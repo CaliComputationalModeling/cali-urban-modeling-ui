@@ -1,148 +1,136 @@
-import { create } from "zustand"
-import type { Simulation, SimulationStatus, Cell, SimulationLog } from "@/shared/types/simulation.types"
-import { simulationService } from "@/services/simulationService"
+import { create } from 'zustand';
+import http from '@/services/http';
+import { FeatureCollection, Geometry } from 'geojson';
+
+interface SimulationStats {
+    density: number;
+    livingCells: number;
+    executionTime: string;
+}
+
+interface HistoryPoint {
+    name: string;
+    cells: number;
+}
 
 interface SimulationState {
-  // Estado
-  currentSimulation: Simulation | null
-  simulations: Simulation[]
-  isRunning: boolean
-  currentIteration: number
-  totalIterations: number
-  logs: SimulationLog[]
-  error: string | null
-  isLoading: boolean
-  
-  // Acciones
-  setCurrentSimulation: (simulation: Simulation) => void
-  fetchCells: () => Promise<void>
-  runStep: (generations?: number) => Promise<void> // <- Modificado para aceptar N generaciones
-  startSimulation: (simulation?: Simulation) => void // <- Modificado para ser opcional
-  stopSimulation: () => void
-  updateProgress: (current: number, total: number) => void
-  addLog: (message: string, level?: 'info' | 'warning' | 'error' | 'success') => void
-  clearLogs: () => void
-  setError: (error: string | null) => void
-  setCells: (cells: Cell[]) => Promise<void>
+    simulationId: string | null;
+    isRunning: boolean;
+    currentGeneration: number;
+    maxGenerations: number;
+    data: FeatureCollection<Geometry> | null;
+    history: HistoryPoint[]; // Para la gráfica de Recharts
+    intervalMs: number;
+    stats: SimulationStats;
+    
+    setSimulationId: (id: string) => void;
+    setMaxGenerations: (max: number) => void;
+    startSimulation: () => void;
+    pauseSimulation: () => void;
+    resetSimulation: () => void;
+    fetchNextStep: () => Promise<void>;
+    setIntervalMs: (ms: number) => void;
 }
 
 export const useSimulationStore = create<SimulationState>((set, get) => ({
-  // Estado inicial
-  currentSimulation: null,
-  simulations: [],
-  isRunning: false,
-  currentIteration: 0,
-  totalIterations: 100, // Puedes ajustar esto según el límite de tu simulación
-  logs: [],
-  error: null,
-  isLoading: false,
+    simulationId: null,
+    isRunning: false,
+    currentGeneration: 0,
+    maxGenerations: 100,
+    data: null,
+    history: [],
+    intervalMs: 1000,
+    stats: { density: 0, livingCells: 0, executionTime: '00:00:00' },
 
-  // Acciones
-  setCurrentSimulation: (simulation) => set({ currentSimulation: simulation }),
-  
-  fetchCells: async () => {
-    set({ isLoading: true, error: null })
-    try {
-      // Nota: asumiendo que simulationService.fetchCells() existe para obtener datos iniciales masivos
-      const cells = await simulationService.fetchCells()
-      get().addLog(`Celdas cargadas: ${cells.length} elementos`, 'success')
-      set({ isLoading: false })
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error al cargar celdas'
-      get().addLog(message, 'error')
-      set({ error: message, isLoading: false })
-    }
-  },
+    setSimulationId: (id: string) => set({ simulationId: id }),
+    setMaxGenerations: (max: number) => set({ maxGenerations: max }),
 
-  runStep: async (generations = 1) => {
-    const state = get()
-    const activeSimId = state.currentSimulation?.id
+    startSimulation: () => {
+        if (get().isRunning) return;
+        set({ isRunning: true });
+        
+        const tick = async (): Promise<void> => {
+            const state = get(); 
+            if (!state.isRunning || state.currentGeneration >= state.maxGenerations) {
+                console.log("🛑 SIMULACIÓN FINALIZADA O PAUSADA");
+                set({ isRunning: false });
+                return;
+            }
 
-    if (!activeSimId) {
-      get().addLog('Error: No hay una simulación cargada en el backend. Carga los datos primero.', 'error')
-      return
-    }
+            await state.fetchNextStep();
+            
+            // Usamos el intervalo de tiempo configurado en el slider
+            setTimeout(tick, get().intervalMs);
+        };
 
-    set({ isLoading: true, error: null })
-    
-    try {
-      // 1. Ejecutamos el cálculo en el backend
-      await simulationService.runSimulationStep(activeSimId, generations)
-      
-      // 2. Traemos el nuevo estado de la grilla
-      const updatedData = await simulationService.getSimulation(activeSimId)
-      
-      // 3. Formateamos las celdas para que coincidan con la interfaz Cell de React
-      const formattedCells: Cell[] = updatedData.grid.cells.map((c: any) => ({
-        position: { x: c.position.x, y: c.position.y },
-        state: c.state
-      }))
+        tick();
+    },
 
-      // 4. Actualizamos el estado de Zustand
-      set({ 
-        currentIteration: updatedData.generation,
-        currentSimulation: {
-          ...state.currentSimulation!,
-          cells: formattedCells,
-          currentIteration: updatedData.generation
+    pauseSimulation: () => set({ isRunning: false }),
+
+    resetSimulation: () => {
+        // Opcional: Podrías llamar al endpoint /reset del backend aquí
+        set({ 
+            currentGeneration: 0, 
+            isRunning: false, 
+            data: null,
+            history: [],
+            stats: { density: 0, livingCells: 0, executionTime: '00:00:00' }
+        });
+    },
+
+    fetchNextStep: async () => {
+        const { simulationId, currentGeneration } = get();
+        if (!simulationId) return;
+
+        try {
+            // --- PASO 1: ORDENAR EVOLUCIÓN AL BACKEND ---
+            // Llamamos a /run para que el motor de Python avance 1 generación
+            await http.post(`/simulations/${simulationId}/run`, { 
+                generations: 1 
+            });
+
+            // --- PASO 2: OBTENER RESULTADO GEOJSON ---
+            const response = await http.get<FeatureCollection<Geometry>>(
+                `/simulations/${simulationId}/geojson`
+            );
+
+            if (response.ok && response.data) {
+                const geojson = response.data;
+                
+                // 📝 DEBUGGER DE PAYLOAD COMPLETO
+                console.group(`🧬 GENERACIÓN ENTRANTE: ${currentGeneration + 1}`);
+                console.log("Estructura:", geojson);
+                console.log("Celdas vivas:", geojson.features.length);
+                console.log("Metadatos root:", geojson.features[0]?.properties);
+                console.groupEnd();
+
+                // Extraemos metadata del backend
+                const meta = (geojson as any).properties || geojson.features?.[0]?.properties;
+                const activeCells = meta?.alive_cells || geojson.features.length || 0;
+
+                set((state) => ({
+                    data: geojson,
+                    currentGeneration: meta?.generation || state.currentGeneration + 1, 
+                    stats: {
+                        livingCells: activeCells,
+                        density: meta?.density || 0,
+                        executionTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                    },
+                    // Actualizamos el historial para la gráfica (mantenemos los últimos 30 puntos)
+                    history: [...state.history, { 
+                        name: `G${meta?.generation || state.currentGeneration + 1}`, 
+                        cells: activeCells 
+                    }].slice(-30)
+                }));
+            } else {
+                set({ isRunning: false });
+            }
+        } catch (error) {
+            console.error("❌ Error crítico en el flujo de simulación:", error);
+            set({ isRunning: false });
         }
-      })
-      
-      get().addLog(`Generación ${updatedData.generation} calculada exitosamente`, 'success')
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error al ejecutar paso'
-      get().addLog(message, 'error')
-      // Si falla, detenemos la ejecución automática
-      set({ error: message, isRunning: false }) 
-    } finally {
-      set({ isLoading: false })
-    }
-  },
+    },
 
-  startSimulation: (simulation) => {
-    // Si se pasa una simulación, la seteamos. Si no, solo cambiamos isRunning a true para continuar.
-    if (simulation) {
-      set({ currentSimulation: simulation, isRunning: true, logs: [] })
-    } else {
-      set({ isRunning: true })
-    }
-    get().addLog('Simulación en marcha (Play)', 'info')
-  },
-
-  stopSimulation: () => {
-    set({ isRunning: false })
-    get().addLog('Simulación pausada', 'warning')
-  },
-
-  updateProgress: (current, total) => {
-    set({ currentIteration: current, totalIterations: total })
-  },
-
-  addLog: (message, level = 'info') => {
-    const timestamp = new Date().toLocaleTimeString()
-    const log: SimulationLog = {
-      timestamp,
-      level,
-      message,
-    }
-    set((state) => ({ logs: [...state.logs, log].slice(-100) })) // Mantener últimos 100 logs
-  },
-
-  clearLogs: () => set({ logs: [] }),
-
-  setError: (error) => set({ error }),
-
-  setCells: async (cells) => {
-    set({ isLoading: true, error: null })
-    try {
-      // Nota: Asumiendo que esta función existe en tu service
-      await simulationService.setCells(cells)
-      get().addLog(`${cells.length} celdas establecidas`, 'success')
-      set({ isLoading: false })
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error al establecer celdas'
-      get().addLog(message, 'error')
-      set({ error: message, isLoading: false })
-    }
-  },
-}))
+    setIntervalMs: (ms: number) => set({ intervalMs: ms }),
+}));
