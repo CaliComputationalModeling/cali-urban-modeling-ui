@@ -1,5 +1,5 @@
 import { create } from "zustand"
-import type { Simulation, SimulationStatus, Cell, SimulationLog } from "@/shared/types/simulation.types"
+import type { Simulation, Cell, SimulationLog } from "@/shared/types/simulation.types"
 import { simulationService } from "@/services/simulationService"
 
 interface SimulationState {
@@ -57,10 +57,15 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
     const state = get()
     set({ isRunning: true, error: null })
     try {
-      const updatedCells = await simulationService.runStep()
-      const newIteration = state.currentIteration + 1
-      set({ currentIteration: newIteration })
-      get().addLog(`Paso ${newIteration} completado - Celdas: ${updatedCells?.length || 0}`, 'success')
+      if (state.currentSimulation?.id) {
+        const updated = await simulationService.runStep(state.currentSimulation.id, 1)
+        const newIteration = state.currentIteration + 1
+        set({ currentIteration: newIteration })
+        get().addLog(
+          `Paso ${newIteration} completado - Celdas: ${updated?.grid?.alive_cells || 0}`,
+          'success'
+        )
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al ejecutar paso'
       get().addLog(message, 'error')
