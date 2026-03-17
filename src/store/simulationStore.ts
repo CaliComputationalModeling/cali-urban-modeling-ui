@@ -2,135 +2,165 @@ import { create } from 'zustand';
 import http from '@/services/http';
 import { FeatureCollection, Geometry } from 'geojson';
 
+// ─── Tipos ────────────────────────────────────────────────────────────────────
+
 interface SimulationStats {
-    density: number;
-    livingCells: number;
-    executionTime: string;
+  density: number;
+  livingCells: number;
+  executionTime: string;
+  // Urban stats — datos del modelo espacial de tesis
+  enTransito: number;
+  enCambuche: number;
+  enComedor: number;
+  enZonaConsumo: number;
+  enZonaRepulsora: number;
+  totalAgentes: number;
 }
 
 interface HistoryPoint {
-    name: string;
-    cells: number;
+  name: string;
+  cells: number;
+  enComedor: number;
+  enCambuche: number;
+  enTransito: number;
 }
 
 interface SimulationState {
-    simulationId: string | null;
-    isRunning: boolean;
-    currentGeneration: number;
-    maxGenerations: number;
-    data: FeatureCollection<Geometry> | null;
-    history: HistoryPoint[]; // Para la gráfica de Recharts
-    intervalMs: number;
-    stats: SimulationStats;
-    
-    setSimulationId: (id: string) => void;
-    setMaxGenerations: (max: number) => void;
-    startSimulation: () => void;
-    pauseSimulation: () => void;
-    resetSimulation: () => void;
-    fetchNextStep: () => Promise<void>;
-    setIntervalMs: (ms: number) => void;
+  simulationId: string | null;
+  isRunning: boolean;
+  currentGeneration: number;
+  maxGenerations: number;
+  data: FeatureCollection<Geometry> | null;
+  history: HistoryPoint[];
+  intervalMs: number;
+  stats: SimulationStats;
+
+  setSimulationId: (id: string) => void;
+  setMaxGenerations: (max: number) => void;
+  startSimulation: () => void;
+  pauseSimulation: () => void;
+  resetSimulation: () => void;
+  fetchNextStep: () => Promise<void>;
+  setIntervalMs: (ms: number) => void;
+  disconnect: () => void;
 }
 
+// ─── Estado inicial ───────────────────────────────────────────────────────────
+
+const STATS_INICIAL: SimulationStats = {
+  density: 0,
+  livingCells: 0,
+  executionTime: '00:00:00',
+  enTransito: 0,
+  enCambuche: 0,
+  enComedor: 0,
+  enZonaConsumo: 0,
+  enZonaRepulsora: 0,
+  totalAgentes: 0,
+};
+
+// ─── Store ────────────────────────────────────────────────────────────────────
+
 export const useSimulationStore = create<SimulationState>((set, get) => ({
-    simulationId: null,
-    isRunning: false,
-    currentGeneration: 0,
-    maxGenerations: 100,
-    data: null,
-    history: [],
-    intervalMs: 1000,
-    stats: { density: 0, livingCells: 0, executionTime: '00:00:00' },
+  simulationId: null,
+  isRunning: false,
+  currentGeneration: 0,
+  maxGenerations: 100,
+  data: null,
+  history: [],
+  intervalMs: 1000,
+  stats: STATS_INICIAL,
 
-    setSimulationId: (id: string) => set({ simulationId: id }),
-    setMaxGenerations: (max: number) => set({ maxGenerations: max }),
+  setSimulationId: (id: string) => set({ simulationId: id }),
+  setMaxGenerations: (max: number) => set({ maxGenerations: max }),
 
-    startSimulation: () => {
-        if (get().isRunning) return;
-        set({ isRunning: true });
-        
-        const tick = async (): Promise<void> => {
-            const state = get(); 
-            if (!state.isRunning || state.currentGeneration >= state.maxGenerations) {
-                console.log("🛑 SIMULACIÓN FINALIZADA O PAUSADA");
-                set({ isRunning: false });
-                return;
-            }
+  startSimulation: () => {
+    if (get().isRunning) return;
+    set({ isRunning: true });
 
-            await state.fetchNextStep();
-            
-            // Usamos el intervalo de tiempo configurado en el slider
-            setTimeout(tick, get().intervalMs);
-        };
+    const tick = async (): Promise<void> => {
+      const state = get();
+      if (!state.isRunning || state.currentGeneration >= state.maxGenerations) {
+        set({ isRunning: false });
+        return;
+      }
+      await state.fetchNextStep();
+      setTimeout(tick, get().intervalMs);
+    };
 
-        tick();
-    },
+    tick();
+  },
 
-    pauseSimulation: () => set({ isRunning: false }),
+  pauseSimulation: () => set({ isRunning: false }),
 
-    resetSimulation: () => {
-        // Opcional: Podrías llamar al endpoint /reset del backend aquí
-        set({ 
-            currentGeneration: 0, 
-            isRunning: false, 
-            data: null,
-            history: [],
-            stats: { density: 0, livingCells: 0, executionTime: '00:00:00' }
-        });
-    },
+  resetSimulation: () => {
+    const { simulationId } = get();
+    if (simulationId) {
+      http.post(`/simulations/${simulationId}/reset`, {}).catch(() => null);
+    }
+    set({ currentGeneration: 0, isRunning: false, data: null, history: [], stats: STATS_INICIAL });
+  },
 
-    fetchNextStep: async () => {
-        const { simulationId, currentGeneration } = get();
-        if (!simulationId) return;
+  disconnect: () =>
+    set({ simulationId: null, isRunning: false, currentGeneration: 0, data: null, history: [], stats: STATS_INICIAL }),
 
-        try {
-            // --- PASO 1: ORDENAR EVOLUCIÓN AL BACKEND ---
-            // Llamamos a /run para que el motor de Python avance 1 generación
-            await http.post(`/simulations/${simulationId}/run`, { 
-                generations: 1 
-            });
+  fetchNextStep: async () => {
+    const { simulationId, currentGeneration } = get();
+    if (!simulationId) return;
 
-            // --- PASO 2: OBTENER RESULTADO GEOJSON ---
-            const response = await http.get<FeatureCollection<Geometry>>(
-                `/simulations/${simulationId}/geojson`
-            );
+    try {
+      // 1. Avanzar 1 generación con el motor espacial
+      await http.post(`/simulations/${simulationId}/run-espacial`, { generations: 1 });
 
-            if (response.ok && response.data) {
-                const geojson = response.data;
-                
-                // 📝 DEBUGGER DE PAYLOAD COMPLETO
-                console.group(`🧬 GENERACIÓN ENTRANTE: ${currentGeneration + 1}`);
-                console.log("Estructura:", geojson);
-                console.log("Celdas vivas:", geojson.features.length);
-                console.log("Metadatos root:", geojson.features[0]?.properties);
-                console.groupEnd();
+      // 2. GeoJSON para el mapa
+      const geoRes = await http.get<FeatureCollection<Geometry>>(`/simulations/${simulationId}/geojson`);
 
-                // Extraemos metadata del backend
-                const meta = (geojson as any).properties || geojson.features?.[0]?.properties;
-                const activeCells = meta?.alive_cells || geojson.features.length || 0;
+      // 3. Estado urbano con urban_stats
+      const urbanRes = await http.get<any>(`/simulations/${simulationId}/estado-urbano`);
 
-                set((state) => ({
-                    data: geojson,
-                    currentGeneration: meta?.generation || state.currentGeneration + 1, 
-                    stats: {
-                        livingCells: activeCells,
-                        density: meta?.density || 0,
-                        executionTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-                    },
-                    // Actualizamos el historial para la gráfica (mantenemos los últimos 30 puntos)
-                    history: [...state.history, { 
-                        name: `G${meta?.generation || state.currentGeneration + 1}`, 
-                        cells: activeCells 
-                    }].slice(-30)
-                }));
-            } else {
-                set({ isRunning: false });
-            }
-        } catch (error) {
-            console.error("❌ Error crítico en el flujo de simulación:", error);
-            set({ isRunning: false });
-        }
-    },
+      if (!geoRes.ok || !geoRes.data) {
+        set({ isRunning: false });
+        return;
+      }
 
-    setIntervalMs: (ms: number) => set({ intervalMs: ms }),
+      const geojson = geoRes.data;
+      const meta = (geojson as any).properties || {};
+      const urban = urbanRes.data?.urban_stats || {};
+      const gridMeta = urbanRes.data?.grid || {};
+
+      const activeCells = meta.alive_cells ?? gridMeta.alive_cells ?? geojson.features.length;
+      const density = meta.density ?? gridMeta.population_density ?? 0;
+      const generation = meta.generation ?? gridMeta.generation ?? currentGeneration + 1;
+
+      const newPoint: HistoryPoint = {
+        name: `G${generation}`,
+        cells: activeCells,
+        enComedor: urban.en_comedor ?? 0,
+        enCambuche: urban.en_cambuche ?? 0,
+        enTransito: urban.en_transito ?? 0,
+      };
+
+      set((state) => ({
+        data: geojson,
+        currentGeneration: generation,
+        stats: {
+          livingCells: activeCells,
+          density,
+          executionTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          enTransito: urban.en_transito ?? 0,
+          enCambuche: urban.en_cambuche ?? 0,
+          enComedor: urban.en_comedor ?? 0,
+          enZonaConsumo: urban.en_zona_consumo ?? 0,
+          enZonaRepulsora: urban.en_zona_repulsora ?? 0,
+          totalAgentes: urban.total_agentes ?? activeCells,
+        },
+        history: [...state.history, newPoint].slice(-50),
+      }));
+    } catch (error) {
+      console.error('Error en fetchNextStep:', error);
+      set({ isRunning: false });
+    }
+  },
+
+  setIntervalMs: (ms: number) => set({ intervalMs: ms }),
 }));
