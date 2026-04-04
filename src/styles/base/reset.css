@@ -1,0 +1,25 @@
+/* ============================================
+   RESET
+   ============================================ */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: var(--color-bg-page);
+  color: var(--color-text-dark);
+}
+
+/* Utility */
+.animate-in {
+  animation: fadeInUp 0.3s ease;
+}
+
+.animate-spin {
+  animation: spin 0.8s linear infinite;
+}

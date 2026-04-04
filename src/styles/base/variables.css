@@ -1,0 +1,51 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,600;1,700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+/* ============================================
+   CSS VARIABLES
+   ============================================ */
+:root {
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: 'Playfair Display', Georgia, serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --color-dark: #1a3a52;
+  --color-dark-gradient: #0f2537;
+  --color-accent: #00d9ff;
+  --color-accent-hover: #00b8d9;
+  --color-accent-glow: rgba(0, 217, 255, 0.15);
+  --color-gold: #d4af37;
+  --color-gold-light: rgba(212, 175, 55, 0.15);
+
+  --color-text-dark: #1a3a52;
+  --color-text-muted: #6b7d94;
+  --color-text-light: #b8c5d6;
+
+  --color-bg-light: #f8f9fa;
+  --color-bg-page: #f0f4f8;
+  --color-input-bg: #f1f3f5;
+  --color-white: #ffffff;
+  --color-border: #e1e8f0;
+
+  --color-success: #10b981;
+  --color-success-bg: #f0fdf4;
+  --color-error-bg: #fef2f2;
+  --color-error-border: #fecaca;
+  --color-error-text: #dc2626;
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 20px 50px rgba(0, 0, 0, 0.08);
+  --shadow-xl: 0 25px 60px rgba(0, 0, 0, 0.12);
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+
+  --sidebar-width: 260px;
+  --header-height: 68px;
+
+  --transition-fast: 0.15s ease;
+  --transition-base: 0.2s ease;
+  --transition-slow: 0.35s ease;
+}

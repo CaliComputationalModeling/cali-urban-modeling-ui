@@ -1,0 +1,541 @@
+/* ============================================
+   SIMULATION MODULE
+   — Dark "war room" theme, isolado del resto
+   ============================================ */
+
+/* Variables locales del módulo */
+.sim-module {
+  --sim-bg:        #0d1017;
+  --sim-surface:   #11141b;
+  --sim-border:    rgba(255, 255, 255, 0.06);
+  --sim-border-hi: rgba(255, 255, 255, 0.12);
+  --sim-text:      #e2e8f0;
+  --sim-muted:     #64748b;
+  --sim-accent:    var(--color-accent);
+  --sim-gold:      var(--color-gold);
+}
+
+/* ── Page wrapper ── */
+.sim-page {
+  padding: 0 40px 48px 40px;
+  animation: fadeInUp 0.3s ease;
+}
+
+/* ── Header ── */
+.sim-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 36px;
+  padding-top: 8px;
+}
+
+.sim-header-meta {
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-end;
+}
+
+.sim-meta-location {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--color-text-muted);
+}
+
+.sim-meta-stream {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+}
+
+/* ── Layout grid ── */
+.sim-grid {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 28px;
+  align-items: start;
+}
+
+.sim-left {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ── Map container ── */
+.sim-map-container {
+  height: 580px;
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  background: #0d1017;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.2);
+  position: relative;
+}
+
+/* Map gen badge */
+.sim-map-badge {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 1000;
+  background: rgba(13, 16, 23, 0.85);
+  backdrop-filter: blur(8px);
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--color-accent);
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sim-map-badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  box-shadow: 0 0 6px var(--color-accent);
+  flex-shrink: 0;
+}
+
+/* ── Tech note ── */
+.sim-tech-note {
+  padding: 11px 18px;
+  background: var(--color-bg-light);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.sim-tech-note p {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin: 0;
+  font-style: italic;
+  line-height: 1.5;
+}
+
+/* ── Loader ── */
+.sim-loader {
+  background: var(--sim-surface);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-lg);
+  padding: 18px 24px;
+  margin-bottom: 28px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 0 0 1px rgba(0, 217, 255, 0.05), 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.sim-loader.connected {
+  border-color: var(--color-success);
+  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.08), 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.sim-loader-icon {
+  color: var(--color-accent);
+  flex-shrink: 0;
+  transition: color var(--transition-base);
+}
+
+.sim-loader.connected .sim-loader-icon {
+  color: var(--color-success);
+}
+
+.sim-loader-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.sim-loader-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--sim-muted);
+  margin-bottom: 6px;
+}
+
+.sim-loader-input {
+  background: transparent;
+  border: none;
+  color: var(--color-accent);
+  width: 100%;
+  outline: none;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.sim-loader-input::placeholder {
+  color: rgba(0, 217, 255, 0.3);
+  font-weight: 400;
+}
+
+.sim-loader-input:disabled {
+  color: var(--color-success);
+}
+
+.sim-loader-btn {
+  background: var(--color-accent);
+  color: var(--color-dark);
+  border: none;
+  padding: 10px 20px;
+  border-radius: var(--radius-md);
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: 1px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all var(--transition-base);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.sim-loader-btn:hover {
+  background: var(--color-accent-hover);
+  box-shadow: 0 4px 16px rgba(0, 217, 255, 0.3);
+}
+
+.sim-loader-btn.connected {
+  background: var(--color-success);
+  cursor: default;
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.25);
+}
+
+/* ── Control Panel ── */
+.sim-control {
+  background: var(--sim-surface);
+  border: 1px solid var(--sim-border);
+  border-radius: var(--radius-xl);
+  padding: 20px 28px;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+}
+
+/* Transport buttons */
+.sim-transport {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.sim-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  border: 1px solid var(--sim-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--sim-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-base);
+  flex-shrink: 0;
+}
+
+.sim-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--sim-text);
+  border-color: var(--sim-border-hi);
+}
+
+.sim-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.sim-btn.play-pause {
+  background: rgba(0, 217, 255, 0.1);
+  border-color: rgba(0, 217, 255, 0.2);
+  color: var(--color-accent);
+}
+
+.sim-btn.play-pause:hover {
+  background: rgba(0, 217, 255, 0.18);
+  box-shadow: 0 0 16px rgba(0, 217, 255, 0.15);
+}
+
+.sim-btn.play-pause.running {
+  background: rgba(212, 175, 55, 0.1);
+  border-color: rgba(212, 175, 55, 0.2);
+  color: var(--color-gold);
+}
+
+.sim-btn.play-pause.running:hover {
+  background: rgba(212, 175, 55, 0.18);
+  box-shadow: 0 0 16px rgba(212, 175, 55, 0.15);
+}
+
+/* Divider */
+.sim-control-divider {
+  width: 1px;
+  height: 40px;
+  background: var(--sim-border);
+  flex-shrink: 0;
+  margin: 0 24px;
+}
+
+/* Speed slider */
+.sim-speed {
+  flex: 1;
+  min-width: 0;
+}
+
+.sim-speed-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.sim-speed-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--sim-muted);
+  letter-spacing: 1.5px;
+  font-family: var(--font-mono);
+}
+
+.sim-speed-value {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+}
+
+.sim-slider {
+  width: 100%;
+  height: 4px;
+  cursor: pointer;
+  accent-color: var(--color-accent);
+  border-radius: 2px;
+}
+
+/* Max gen input */
+.sim-maxgen {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.sim-maxgen-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--sim-muted);
+  letter-spacing: 1.5px;
+  font-family: var(--font-mono);
+}
+
+.sim-maxgen-input {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--sim-border-hi);
+  color: var(--color-accent);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  width: 72px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  outline: none;
+  transition: border-color var(--transition-fast);
+  text-align: center;
+}
+
+.sim-maxgen-input:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-accent-glow);
+}
+
+/* Gen counter */
+.sim-gen-counter {
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.sim-gen-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--sim-muted);
+  letter-spacing: 1.5px;
+  font-family: var(--font-mono);
+  margin-bottom: 2px;
+}
+
+.sim-gen-value {
+  font-size: 36px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: white;
+  line-height: 1;
+  letter-spacing: -1px;
+}
+
+/* ── Stats Panel (dark sidebar) ── */
+.sim-stats {
+  background: var(--sim-surface);
+  border-radius: 28px;
+  padding: 28px;
+  border: 1px solid var(--sim-border);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  min-height: 700px;
+  position: sticky;
+  top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.sim-stats-title {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 2.5px;
+  color: var(--color-gold);
+  margin-bottom: 24px;
+  font-family: var(--font-mono);
+}
+
+/* Metric card */
+.sim-metric {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--sim-border);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  margin-bottom: 14px;
+  transition: border-color var(--transition-fast);
+}
+
+.sim-metric:hover {
+  border-color: var(--sim-border-hi);
+}
+
+.sim-metric-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.sim-metric-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--sim-muted);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+}
+
+.sim-metric-value {
+  font-size: 30px;
+  color: white;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  line-height: 1;
+  letter-spacing: -0.5px;
+}
+
+/* Sparkline */
+.sim-metric.sparkline {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 14px;
+}
+
+.sim-sparkline-area {
+  flex: 1;
+  min-height: 100px;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  padding-top: 12px;
+}
+
+.sim-spark-bar {
+  flex: 1;
+  border-radius: 2px 2px 0 0;
+  background: linear-gradient(to top, rgba(0, 217, 255, 0.6), rgba(0, 217, 255, 0.2));
+  min-height: 4px;
+  transition: height 0.4s ease;
+  animation: sparkPulse 2s ease-in-out infinite;
+}
+
+.sim-spark-bar:nth-child(odd) { animation-delay: 0.1s; }
+.sim-spark-bar:nth-child(3n) { animation-delay: 0.25s; }
+.sim-spark-bar:nth-child(5n) { animation-delay: 0.4s; }
+
+@keyframes sparkPulse {
+  0%, 100% { opacity: 0.6; }
+  50%       { opacity: 1; }
+}
+
+.sim-spark-empty {
+  width: 100%;
+  height: 100%;
+  min-height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed rgba(255, 255, 255, 0.07);
+  border-radius: var(--radius-md);
+  margin-top: 8px;
+}
+
+.sim-spark-empty p {
+  font-size: 11px;
+  color: #334155;
+  font-style: italic;
+}
+
+/* Execution time card */
+.sim-exec-card {
+  margin-top: auto;
+  padding: 18px 20px;
+  background: rgba(0, 217, 255, 0.05);
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(0, 217, 255, 0.1);
+}
+
+.sim-exec-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-accent);
+  letter-spacing: 1.5px;
+  margin-bottom: 8px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+}
+
+.sim-exec-value {
+  font-size: 22px;
+  color: var(--color-accent);
+  font-weight: 700;
+  font-family: var(--font-mono);
+  letter-spacing: -0.5px;
+}
+
+/* Leaflet */
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  border-radius: 12px;
+}
