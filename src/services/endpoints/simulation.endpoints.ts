@@ -1,4 +1,4 @@
-import { http } from "../http";
+import { http } from '../http'
 import type {
   Simulation,
   SimulationCreateRequest,
@@ -7,44 +7,41 @@ import type {
   SimulationProgress,
   SimulationResults,
   SimulationStatistics,
-} from "@/shared/types/simulation.types";
+} from '@/shared/types/simulation.types'
+import type { FeatureCollection, Geometry } from 'geojson'
 
 export const simulationEndpoints = {
   // CRUD
   getAll: (limit = 10, offset = 0) =>
-    http.get<{ items: Simulation[]; total: number }>(`/simulations?limit=${limit}&offset=${offset}`),
-  getById: (id: number) =>
-    http.get<Simulation>(`/simulations/${id}`),
-  create: (data: SimulationCreateRequest) =>
-    http.post<Simulation>("/simulations", data),
+    http.get<{ items: Simulation[]; total: number }>(
+      `/simulations?limit=${limit}&offset=${offset}`,
+    ),
+  getById: (id: number | string) => http.get<Simulation>(`/simulations/${id}`),
+  create: (data: SimulationCreateRequest) => http.post<Simulation>('/simulations', data),
   createSpatial: (data: SimulationCreateRequest, nAgentes = 100) =>
     http.post<Simulation>(`/simulations/espacial?n_agentes=${nAgentes}`, data),
-  stop: (id: number) =>
-    http.delete(`/simulations/${id}`),
-  cancel: (id: number) =>
-    http.delete(`/simulations/${id}/cancelar`),
+  stop: (id: number | string) => http.delete(`/simulations/${id}`),
+  cancel: (id: number | string) => http.delete(`/simulations/${id}/cancelar`),
 
-  // Ejecución
-  run: (id: number, data: SimulationRunRequest) =>
+  // Ejecucion
+  run: (id: number | string, data: SimulationRunRequest) =>
     http.post<SimulationRunResponse>(`/simulations/${id}/run`, data),
-  runSpatial: (id: number, data: SimulationRunRequest) =>
+  runSpatial: (id: number | string, data: SimulationRunRequest) =>
     http.post<SimulationRunResponse>(`/simulations/${id}/run-espacial`, data),
-  reset: (id: number) =>
-    http.post(`/simulations/${id}/reset`, {}),
+  reset: (id: number | string) => http.post(`/simulations/${id}/reset`, {}),
 
   // Monitoreo
-  getStatistics: (id: number) =>
+  getStatistics: (id: number | string) =>
     http.get<SimulationStatistics>(`/simulations/${id}/statistics`),
-  getProgress: (id: number) =>
+  getProgress: (id: number | string) =>
     http.get<SimulationProgress>(`/simulations/${id}/progreso`),
-  getResults: (id: number) =>
+  getResults: (id: number | string) =>
     http.get<SimulationResults>(`/simulations/${id}/resultados`),
-  getGeoJson: (id: number) =>
-    http.get(`/simulations/${id}/geojson`),
-  getUrbanState: (id: number) =>
+  getGeoJson: (id: number | string) =>
+    http.get<FeatureCollection<Geometry>>(`/simulations/${id}/geojson`),
+  getUrbanState: (id: number | string) =>
     http.get(`/simulations/${id}/estado-urbano`),
-  getServerStatus: () =>
-    http.get("/simulations/estado-servidor"),
+  getServerStatus: () => http.get('/simulations/estado-servidor'),
   validateInputs: (data: { escenario_id?: number; regla_id?: number }) =>
-    http.post("/simulations/validar-inputs", data),
-};
+    http.post('/simulations/validar-inputs', data),
+}

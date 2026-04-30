@@ -1,58 +1,80 @@
-"use client";
-import { MapContainer, TileLayer, GeoJSON, Marker, Popup } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
-import { useSimulationStore } from '@/store/simulationStore';
-import { useEffect, useState } from 'react';
-import http from '@/services/http';
+import { useMemo, useEffect, useState } from 'react'
+import { MapContainer, TileLayer, GeoJSON, Marker, Popup } from 'react-leaflet'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
+import { useSimulationStore } from '@/store/simulationStore'
+import http from '@/services/http'
 
-// ─── Colores por estado ───────────────────────────────────────────────────────
-const STATE_COLORS: Record<number, { fill: string; label: string }> = {
-  1: { fill: '#00d9ff', label: 'En tránsito' },
-  2: { fill: '#d4af37', label: 'En cambuche' },
-  3: { fill: '#22c55e', label: 'En comedor' },
-  4: { fill: '#f97316', label: 'Zona consumo' },
-  5: { fill: '#ef4444', label: 'Zona repulsora' },
-};
+// ─── Density Color Scale ─────────────────────────────────────────────────────
 
-// ─── Íconos POI ───────────────────────────────────────────────────────────────
+function getDensityColor(ratio: number): string {
+  // HSL: 120 (green) → 60 (yellow) → 0 (red)
+  const hue = 120 * (1 - Math.min(ratio, 1))
+  return `hsl(${hue}, 80%, 50%)`
+}
+
+function getDensityRadius(ratio: number): number {
+  return 4 + Math.min(ratio, 1) * 16 // 4px to 20px
+}
+
+// ─── POI Icons ───────────────────────────────────────────────────────────────
+
 const POI_ICONS: Record<string, { emoji: string; color: string }> = {
-  comedor_social:  { emoji: '🍽', color: '#22c55e' },
-  cambuche:        { emoji: '🏕', color: '#d4af37' },
-  zona_consumo:    { emoji: '⚠',  color: '#f97316' },
+  comedor_social: { emoji: '🍽', color: '#22c55e' },
+  cambuche: { emoji: '🏕', color: '#d4af37' },
+  zona_consumo: { emoji: '⚠', color: '#f97316' },
   zona_patrullaje: { emoji: '🚔', color: '#ef4444' },
-  parque_publico:  { emoji: '🌳', color: '#86efac' },
-  hospital_cai:    { emoji: '🏥', color: '#f43f5e' },
-};
+  parque_publico: { emoji: '🌳', color: '#86efac' },
+  hospital_cai: { emoji: '🏥', color: '#f43f5e' },
+}
 
 const makePOIIcon = (tipo: string) => {
-  const def = POI_ICONS[tipo] || { emoji: '📍', color: '#94a3b8' };
+  const def = POI_ICONS[tipo] || { emoji: '📍', color: '#94a3b8' }
   return L.divIcon({
     html: `<div style="font-size:16px;line-height:1;filter:drop-shadow(0 0 4px ${def.color})">${def.emoji}</div>`,
     className: '',
     iconSize: [20, 20],
     iconAnchor: [10, 10],
-  });
-};
+  })
+}
 
-// ─── SimulationMap ────────────────────────────────────────────────────────────
+// ─── SimulationMap ───────────────────────────────────────────────────────────
 
 export const SimulationMap = () => {
-  const { data, currentGeneration, isRunning } = useSimulationStore();
-  const caliCoords: [number, number] = [3.4372, -76.5225];
-  const [pois, setPois] = useState<any[]>([]);
+  const data = useSimulationStore((s) => s.data)
+  const currentGeneration = useSimulationStore((s) => s.currentGeneration)
+  const status = useSimulationStore((s) => s.status)
+  const caliCoords: [number, number] = [3.4372, -76.5225]
+  const [pois, setPois] = useState<Record<string, unknown>[]>([])
 
-  // Cargar POIs una sola vez al montar
+  // Load POIs once on mount
   useEffect(() => {
-    http.get<any>('/observations/pois')
-      .then((res) => { if (res.ok && res.data?.pois) setPois(res.data.pois); })
-      .catch(() => null);
-  }, []);
+    http
+      .get<{ pois: Record<string, unknown>[] }>('/observations/pois')
+      .then((res) => {
+        if (res.ok && res.data?.pois) setPois(res.data.pois)
+      })
+      .catch(() => null)
+  }, [])
 
-  // Filtrar features sin geometry para evitar errores silenciosos de Leaflet
-  const dataFiltrada = data
-    ? { ...data, features: data.features.filter((f) => f.geometry !== null) }
-    : null;
+  // Filter null geometries and compute max agents for density normalization
+  const { filteredData, maxAgentes } = useMemo(() => {
+    if (!data) return { filteredData: null, maxAgentes: 1 }
+
+    const features = data.features.filter((f) => f.geometry !== null)
+    let max = 0
+    for (const f of features) {
+      const a = (f.properties?.agentes as number) ?? 0
+      if (a > max) max = a
+    }
+
+    return {
+      filteredData: { ...data, features },
+      maxAgentes: Math.max(max, 1),
+    }
+  }, [data])
+
+  const isRunning = status === 'running'
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
@@ -73,60 +95,65 @@ export const SimulationMap = () => {
           attribution="&copy; CARTO"
         />
 
-        {/* Agentes de la simulación */}
-        {dataFiltrada && dataFiltrada.features.length > 0 && (
+        {/* Simulation agents — density-based coloring */}
+        {filteredData && filteredData.features.length > 0 && (
           <GeoJSON
-            key={`sim-${currentGeneration}-${dataFiltrada.features.length}`}
-            data={dataFiltrada}
+            key={`sim-${currentGeneration}-${filteredData.features.length}`}
+            data={filteredData}
             pointToLayer={(feature, latlng) => {
-              const state = feature.properties?.state ?? 1;
-              const def = STATE_COLORS[state] ?? STATE_COLORS[1];
-              const agentes = feature.properties?.agentes ?? 1;
+              const agentes = (feature.properties?.agentes as number) ?? 0
+              const ratio = agentes / maxAgentes
+
               return L.circleMarker(latlng, {
-                radius: Math.min(4 + agentes, 12),
-                fillColor: def.fill,
+                radius: getDensityRadius(ratio),
+                fillColor: getDensityColor(ratio),
                 color: '#ffffff',
                 weight: 1,
                 opacity: 0.9,
                 fillOpacity: 0.85,
-              });
+              })
             }}
             onEachFeature={(feature, layer) => {
-              const s = feature.properties?.state ?? 1;
-              const def = STATE_COLORS[s] ?? STATE_COLORS[1];
-              const agentes = feature.properties?.agentes ?? 1;
-              const tipo = feature.properties?.tipo_poi ?? 'ninguno';
+              const agentes = (feature.properties?.agentes as number) ?? 0
+              const x = feature.properties?.x ?? '?'
+              const y = feature.properties?.y ?? '?'
+              const ratio = agentes / maxAgentes
+              const densityPct = (ratio * 100).toFixed(1)
+
               layer.bindTooltip(
-                `<b>${def.label}</b><br/>
-                 Agentes: ${agentes}<br/>
-                 POI: ${tipo}<br/>
-                 x:${feature.properties?.x} y:${feature.properties?.y}`,
-                { className: 'sim-tooltip', sticky: true }
-              );
+                `<b>Celda [${x},${y}]</b><br/>Agentes: ${agentes}<br/>Densidad: ${densityPct}%`,
+                { className: 'sim-tooltip', sticky: true },
+              )
             }}
           />
         )}
 
-        {/* Marcadores fijos de POIs */}
-        {pois.map((poi) =>
-          poi.latitud && poi.longitud ? (
+        {/* Fixed POI markers */}
+        {pois.map((poi) => {
+          const lat = poi.latitud as number
+          const lon = poi.longitud as number
+          if (!lat || !lon) return null
+          return (
             <Marker
-              key={poi.id}
-              position={[poi.latitud, poi.longitud]}
-              icon={makePOIIcon(poi.tipo_poi)}
+              key={poi.id as string}
+              position={[lat, lon]}
+              icon={makePOIIcon(poi.tipo_poi as string)}
             >
               <Popup>
-                <b>{poi.nombre}</b><br />
-                Tipo: {poi.tipo_poi}<br />
-                Peso: {poi.peso}<br />
-                Radio: {poi.radio_influencia} celdas
+                <b>{poi.nombre as string}</b>
+                <br />
+                Tipo: {poi.tipo_poi as string}
+                <br />
+                Peso: {poi.peso as number}
+                <br />
+                Radio: {poi.radio_influencia as number} celdas
               </Popup>
             </Marker>
-          ) : null
-        )}
+          )
+        })}
       </MapContainer>
 
-      {/* Badge de generación */}
+      {/* Generation badge */}
       <div className="sim-map-badge">
         <span
           className="sim-map-badge-dot"
@@ -135,15 +162,18 @@ export const SimulationMap = () => {
         GEN_{currentGeneration.toString().padStart(5, '0')}
       </div>
 
-      {/* Leyenda */}
+      {/* Density legend */}
       <div className="sim-map-legend">
-        {Object.entries(STATE_COLORS).map(([state, def]) => (
-          <div key={state} className="sim-legend-row">
-            <div className="sim-legend-dot" style={{ background: def.fill }} />
-            <span>{def.label}</span>
+        <span className="sim-legend-title">DENSIDAD</span>
+        <div className="sim-legend-gradient">
+          <div className="sim-legend-bar" />
+          <div className="sim-legend-labels">
+            <span>Baja</span>
+            <span>Media</span>
+            <span>Alta</span>
           </div>
-        ))}
+        </div>
       </div>
     </div>
-  );
-};
+  )
+}

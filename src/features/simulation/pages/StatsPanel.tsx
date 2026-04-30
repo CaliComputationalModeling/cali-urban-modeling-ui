@@ -1,34 +1,52 @@
-"use client";
-import { Activity, Users, Database, Clock, Utensils, Home, Zap, AlertTriangle } from 'lucide-react';
-import { useSimulationStore } from '@/store/simulationStore';
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, CartesianGrid,
-} from 'recharts';
+  Activity,
+  Users,
+  Database,
+  Clock,
+  Utensils,
+  Home,
+  Zap,
+  AlertTriangle,
+  Grid3X3,
+  TrendingUp,
+} from 'lucide-react'
+import { useSimulationStore } from '@/store/simulationStore'
+import type { SimulationStatus } from '@/store/simulationStore'
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+} from 'recharts'
 
-// ─── Tooltip personalizado ────────────────────────────────────────────────────
+// ─── Custom Tooltip ──────────────────────────────────────────────────────────
 
-const CustomTooltip = ({ active, payload, label }: any) => {
-  if (!active || !payload?.length) return null;
+const CustomTooltip = ({ active, payload, label }: Record<string, unknown>) => {
+  if (!active || !(payload as unknown[])?.length) return null
   return (
-    <div style={{
-      background: 'var(--color-surface, #1a1f2e)',
-      border: '1px solid var(--color-border, #2a2f3e)',
-      borderRadius: 8,
-      padding: '8px 12px',
-      fontSize: 11,
-    }}>
-      <p style={{ color: '#94a3b8', marginBottom: 4 }}>{label}</p>
-      {payload.map((p: any) => (
+    <div
+      style={{
+        background: 'var(--color-surface, #1a1f2e)',
+        border: '1px solid var(--color-border, #2a2f3e)',
+        borderRadius: 8,
+        padding: '8px 12px',
+        fontSize: 11,
+      }}
+    >
+      <p style={{ color: '#94a3b8', marginBottom: 4 }}>{label as string}</p>
+      {(payload as { dataKey: string; color: string; name: string; value: number }[]).map((p) => (
         <p key={p.dataKey} style={{ color: p.color, margin: '2px 0' }}>
           {p.name}: {p.value}
         </p>
       ))}
     </div>
-  );
-};
+  )
+}
 
-// ─── Componente métrica individual ───────────────────────────────────────────
+// ─── Metric Card ─────────────────────────────────────────────────────────────
 
 const Metric = ({
   icon: Icon,
@@ -37,11 +55,11 @@ const Metric = ({
   color = 'var(--color-accent)',
   sub,
 }: {
-  icon: any;
-  label: string;
-  value: string | number;
-  color?: string;
-  sub?: string;
+  icon: React.ComponentType<{ size?: number | string; color?: string }>
+  label: string
+  value: string | number
+  color?: string
+  sub?: string
 }) => (
   <div className="sim-metric">
     <div className="sim-metric-header">
@@ -51,54 +69,94 @@ const Metric = ({
     <p className="sim-metric-value">{value}</p>
     {sub && <p className="sim-metric-sub">{sub}</p>}
   </div>
-);
+)
 
-// ─── StatsPanel ───────────────────────────────────────────────────────────────
+// ─── Status Config ───────────────────────────────────────────────────────────
+
+const STATUS_CONFIG: Record<SimulationStatus, { label: string; color: string }> = {
+  idle: { label: 'Detenida', color: '#64748b' },
+  running: { label: 'Simulando...', color: '#22c55e' },
+  paused: { label: 'En pausa', color: '#d4af37' },
+  error: { label: 'Error', color: '#ef4444' },
+  completed: { label: 'Completada', color: '#00d9ff' },
+}
+
+// ─── StatsPanel ──────────────────────────────────────────────────────────────
 
 export const StatsPanel = () => {
-  const { stats, isRunning, currentGeneration, history } = useSimulationStore();
-  const hasData = currentGeneration > 0;
-  const total = stats.totalAgentes > 0 ? stats.totalAgentes : 1;
-  const pct = (n: number) => ((n / total) * 100).toFixed(1) + '%';
+  const stats = useSimulationStore((s) => s.stats)
+  const status = useSimulationStore((s) => s.status)
+  const currentGeneration = useSimulationStore((s) => s.currentGeneration)
+  const history = useSimulationStore((s) => s.history)
+
+  const hasData = currentGeneration > 0
+  const total = stats.totalAgentes > 0 ? stats.totalAgentes : 1
+  const pct = (n: number) => ((n / total) * 100).toFixed(1) + '%'
+  const statusCfg = STATUS_CONFIG[status]
 
   return (
     <div className="sim-stats">
-      <h3 className="sim-stats-title">MÉTRICAS_TIEMPO_REAL</h3>
+      <h3 className="sim-stats-title">METRICAS_TIEMPO_REAL</h3>
 
-      {/* Población activa */}
+      {/* Status indicator */}
+      <div className="sim-status-indicator">
+        <span className="sim-status-dot" style={{ background: statusCfg.color }} />
+        <span className="sim-status-label" style={{ color: statusCfg.color }}>
+          {statusCfg.label}
+        </span>
+      </div>
+
+      {/* Total agents */}
       <Metric
         icon={Users}
-        label="Población Activa"
+        label="Total Agentes"
         value={stats.totalAgentes.toLocaleString()}
         color="var(--color-accent)"
         sub={`${stats.livingCells} celdas ocupadas`}
       />
 
-      {/* Densidad */}
+      {/* Max density */}
       <Metric
-        icon={Activity}
-        label="Densidad Promedio"
-        value={`${(stats.density * 100).toFixed(2)}%`}
-        color="var(--color-gold, #d4af37)"
+        icon={TrendingUp}
+        label="Densidad Maxima"
+        value={stats.maxDensity}
+        color="#ef4444"
+        sub="agentes en celda mas densa"
       />
 
-      {/* Distribución urbana */}
+      {/* Occupied cells + generation in a row */}
+      <div className="sim-metric-row">
+        <div className="sim-metric sim-metric-half">
+          <div className="sim-metric-header">
+            <Grid3X3 size={13} color="#d4af37" />
+            <span className="sim-metric-label">Celdas Ocupadas</span>
+          </div>
+          <p className="sim-metric-value">{stats.livingCells}</p>
+        </div>
+        <div className="sim-metric sim-metric-half">
+          <div className="sim-metric-header">
+            <Activity size={13} color="#22c55e" />
+            <span className="sim-metric-label">Generacion</span>
+          </div>
+          <p className="sim-metric-value">{currentGeneration}</p>
+        </div>
+      </div>
+
+      {/* Urban distribution */}
       <div className="sim-metric">
         <div className="sim-metric-header">
           <Database size={13} color="#64748b" />
-          <span className="sim-metric-label">Distribución Urbana</span>
+          <span className="sim-metric-label">Distribucion Urbana</span>
         </div>
         <div className="sim-urban-rows">
-          {/* En tránsito */}
           <div className="sim-urban-row">
             <Zap size={11} color="#00d9ff" />
-            <span className="sim-urban-label">En tránsito</span>
+            <span className="sim-urban-label">En transito</span>
             <span className="sim-urban-value" style={{ color: '#00d9ff' }}>
               {stats.enTransito}
               <span className="sim-urban-pct">{pct(stats.enTransito)}</span>
             </span>
           </div>
-          {/* En comedor */}
           <div className="sim-urban-row">
             <Utensils size={11} color="#22c55e" />
             <span className="sim-urban-label">En comedor</span>
@@ -107,7 +165,6 @@ export const StatsPanel = () => {
               <span className="sim-urban-pct">{pct(stats.enComedor)}</span>
             </span>
           </div>
-          {/* En cambuche */}
           <div className="sim-urban-row">
             <Home size={11} color="#d4af37" />
             <span className="sim-urban-label">En cambuche</span>
@@ -116,7 +173,6 @@ export const StatsPanel = () => {
               <span className="sim-urban-pct">{pct(stats.enCambuche)}</span>
             </span>
           </div>
-          {/* Zona consumo */}
           <div className="sim-urban-row">
             <AlertTriangle size={11} color="#f97316" />
             <span className="sim-urban-label">Zona consumo</span>
@@ -125,7 +181,6 @@ export const StatsPanel = () => {
               <span className="sim-urban-pct">{pct(stats.enZonaConsumo)}</span>
             </span>
           </div>
-          {/* Zona repulsora */}
           <div className="sim-urban-row">
             <AlertTriangle size={11} color="#ef4444" />
             <span className="sim-urban-label">Zona repulsora</span>
@@ -137,50 +192,60 @@ export const StatsPanel = () => {
         </div>
       </div>
 
-      {/* Gráfica histórica */}
+      {/* History chart — line chart of total agents */}
       <div className="sim-metric" style={{ flex: 1, minHeight: 160 }}>
         <div className="sim-metric-header">
           <Activity size={13} color="#64748b" />
-          <span className="sim-metric-label">Historial de Comportamiento</span>
+          <span className="sim-metric-label">Evolucion de Agentes</span>
         </div>
 
         {hasData && history.length > 1 ? (
           <ResponsiveContainer width="100%" height={140}>
-            <AreaChart data={history} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
-              <defs>
-                <linearGradient id="gTransito" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#00d9ff" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#00d9ff" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="gComedor" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#22c55e" stopOpacity={0.4} />
-                  <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="gCambuche" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#d4af37" stopOpacity={0.4} />
-                  <stop offset="95%" stopColor="#d4af37" stopOpacity={0} />
-                </linearGradient>
-              </defs>
+            <LineChart data={history} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1e2736" />
-              <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#475569' }} interval="preserveStartEnd" />
+              <XAxis
+                dataKey="name"
+                tick={{ fontSize: 9, fill: '#475569' }}
+                interval="preserveStartEnd"
+              />
               <YAxis tick={{ fontSize: 9, fill: '#475569' }} />
               <Tooltip content={<CustomTooltip />} />
-              <Area type="monotone" dataKey="enTransito" name="Tránsito"
-                stroke="#00d9ff" strokeWidth={1.5} fill="url(#gTransito)" dot={false} />
-              <Area type="monotone" dataKey="enComedor"  name="Comedor"
-                stroke="#22c55e" strokeWidth={1.5} fill="url(#gComedor)"  dot={false} />
-              <Area type="monotone" dataKey="enCambuche" name="Cambuche"
-                stroke="#d4af37" strokeWidth={1.5} fill="url(#gCambuche)" dot={false} />
-            </AreaChart>
+              <Line
+                type="monotone"
+                dataKey="totalAgentes"
+                name="Total"
+                stroke="#00d9ff"
+                strokeWidth={2}
+                dot={false}
+              />
+              <Line
+                type="monotone"
+                dataKey="enTransito"
+                name="Transito"
+                stroke="#64748b"
+                strokeWidth={1}
+                strokeDasharray="4 4"
+                dot={false}
+              />
+              <Line
+                type="monotone"
+                dataKey="enComedor"
+                name="Comedor"
+                stroke="#22c55e"
+                strokeWidth={1}
+                strokeDasharray="4 4"
+                dot={false}
+              />
+            </LineChart>
           </ResponsiveContainer>
         ) : (
           <div className="sim-spark-empty">
-            <p>Sin datos — inicia la simulación</p>
+            <p>Sin datos — inicia la simulacion</p>
           </div>
         )}
       </div>
 
-      {/* Tiempo de ejecución */}
+      {/* Execution time */}
       <div className="sim-exec-card">
         <div className="sim-exec-label">
           <Clock size={13} />
@@ -189,5 +254,5 @@ export const StatsPanel = () => {
         <p className="sim-exec-value">{stats.executionTime || '00:00.000'}</p>
       </div>
     </div>
-  );
-};
+  )
+}
