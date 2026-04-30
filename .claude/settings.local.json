@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc:*)",
+      "Read(//c/Users/Esteb/Documents/Proyecto de grado universidad Automata/cali-urban-modeling-ui/**)",
+      "Bash(find src:*)"
+    ]
+  }
+}

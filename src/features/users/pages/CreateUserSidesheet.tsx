@@ -1,54 +1,82 @@
-import React, { useState } from 'react';
-import { X, ShieldCheck, Loader2, Eye, EyeOff } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import http from '@/services/http';
+import React from 'react'
+import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { X, ShieldCheck, Loader2, Eye, EyeOff } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { toast } from 'sonner'
+import { userEndpoints } from '@/services/endpoints'
 
-interface Props {
-  isOpen: boolean;
-  onClose: () => void;
-  onSuccess: () => void;
-}
+const createUserSchema = z.object({
+  nombre_completo: z.string().min(3, 'Mínimo 3 caracteres'),
+  email: z.string().email('Correo electrónico inválido'),
+  password: z
+    .string()
+    .min(8, 'Mínimo 8 caracteres')
+    .regex(/[A-Z]/, 'Debe incluir al menos una mayúscula')
+    .regex(/[0-9]/, 'Debe incluir al menos un número'),
+  rol_id: z.coerce.number().min(1).max(5),
+})
+
+type CreateUserForm = z.infer<typeof createUserSchema>
 
 function getPasswordStrength(password: string): { level: number; label: string } {
-  if (!password) return { level: 0, label: '' };
-  let score = 0;
-  if (password.length >= 8) score++;
-  if (/[A-Z]/.test(password)) score++;
-  if (/[0-9]/.test(password)) score++;
-  if (/[^A-Za-z0-9]/.test(password)) score++;
-  const labels = ['', 'Débil', 'Regular', 'Buena', 'Fuerte'];
-  return { level: score, label: labels[score] };
+  if (!password) return { level: 0, label: '' }
+  let score = 0
+  if (password.length >= 8) score++
+  if (/[A-Z]/.test(password)) score++
+  if (/[0-9]/.test(password)) score++
+  if (/[^A-Za-z0-9]/.test(password)) score++
+  const labels = ['', 'Débil', 'Regular', 'Buena', 'Fuerte']
+  return { level: score, label: labels[score] }
+}
+
+interface Props {
+  isOpen: boolean
+  onClose: () => void
+  onSuccess: () => void
 }
 
 export const CreateUserSheet: React.FC<Props> = ({ isOpen, onClose, onSuccess }) => {
-  const [isLoading, setIsLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-    nombre_completo: '',
-    rol_id: 5,
-  });
+  const [showPassword, setShowPassword] = useState(false)
 
-  const strength = getPasswordStrength(formData.password);
+  const {
+    register,
+    handleSubmit,
+    watch,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<CreateUserForm>({
+    resolver: zodResolver(createUserSchema),
+    defaultValues: { nombre_completo: '', email: '', password: '', rol_id: 5 },
+  })
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    try {
-      const { ok } = await http.post('/auth/register', formData);
-      if (ok) {
-        onSuccess();
-        onClose();
-        setFormData({ email: '', password: '', nombre_completo: '', rol_id: 5 });
-        setShowPassword(false);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsLoading(false);
+  const passwordValue = watch('password')
+  const strength = getPasswordStrength(passwordValue)
+
+  const onSubmit = async (data: CreateUserForm) => {
+    const response = await userEndpoints.create(data)
+    if (response.ok) {
+      toast.success('Operador creado exitosamente')
+      reset()
+      setShowPassword(false)
+      onSuccess()
+      onClose()
+    } else {
+      const detail =
+        response.data && typeof response.data === 'object' && 'detail' in response.data
+          ? String((response.data as { detail: unknown }).detail)
+          : 'Error al crear el operador'
+      toast.error(detail)
     }
-  };
+  }
+
+  const handleClose = () => {
+    reset()
+    setShowPassword(false)
+    onClose()
+  }
 
   return (
     <AnimatePresence>
@@ -59,7 +87,7 @@ export const CreateUserSheet: React.FC<Props> = ({ isOpen, onClose, onSuccess })
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={onClose}
+            onClick={handleClose}
           />
 
           <motion.div
@@ -74,47 +102,48 @@ export const CreateUserSheet: React.FC<Props> = ({ isOpen, onClose, onSuccess })
               <p className="sidesheet-eyebrow">Sistema Operativo / Seguridad</p>
               <div className="sidesheet-title-row">
                 <h2 className="sidesheet-title">Nuevo Operador</h2>
-                <button className="sidesheet-close" onClick={onClose} aria-label="Cerrar">
+                <button className="sidesheet-close" onClick={handleClose} aria-label="Cerrar">
                   <X size={18} />
                 </button>
               </div>
             </div>
 
             {/* Form */}
-            <form onSubmit={handleSubmit} className="sidesheet-body">
+            <form onSubmit={handleSubmit(onSubmit)} noValidate className="sidesheet-body">
               <div className="sheet-form-group">
                 <label className="sheet-form-label">Nombre Completo</label>
                 <input
-                  required
+                  {...register('nombre_completo')}
                   className="sheet-input"
                   placeholder="Ej. David Gutiérrez"
-                  value={formData.nombre_completo}
-                  onChange={e => setFormData({ ...formData, nombre_completo: e.target.value })}
+                  disabled={isSubmitting}
                 />
+                {errors.nombre_completo && (
+                  <p className="sheet-field-error">{errors.nombre_completo.message}</p>
+                )}
               </div>
 
               <div className="sheet-form-group">
                 <label className="sheet-form-label">Email Corporativo</label>
                 <input
-                  required
+                  {...register('email')}
                   type="email"
                   className="sheet-input"
                   placeholder="usuario@simcore.io"
-                  value={formData.email}
-                  onChange={e => setFormData({ ...formData, email: e.target.value })}
+                  disabled={isSubmitting}
                 />
+                {errors.email && <p className="sheet-field-error">{errors.email.message}</p>}
               </div>
 
               <div className="sheet-form-group">
                 <label className="sheet-form-label">Contraseña de Acceso</label>
                 <div className="password-wrapper">
                   <input
-                    required
+                    {...register('password')}
                     type={showPassword ? 'text' : 'password'}
                     className="sheet-input"
                     placeholder="••••••••"
-                    value={formData.password}
-                    onChange={e => setFormData({ ...formData, password: e.target.value })}
+                    disabled={isSubmitting}
                   />
                   <button
                     type="button"
@@ -125,7 +154,8 @@ export const CreateUserSheet: React.FC<Props> = ({ isOpen, onClose, onSuccess })
                     {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                   </button>
                 </div>
-                {formData.password && (
+                {errors.password && <p className="sheet-field-error">{errors.password.message}</p>}
+                {passwordValue && (
                   <div className="password-strength">
                     <div className="strength-bar-track">
                       <div className={`strength-bar-fill strength-${strength.level}`} />
@@ -138,9 +168,9 @@ export const CreateUserSheet: React.FC<Props> = ({ isOpen, onClose, onSuccess })
               <div className="sheet-form-group" style={{ marginBottom: 40 }}>
                 <label className="sheet-form-label">Nivel de Autorización</label>
                 <select
+                  {...register('rol_id')}
                   className="sheet-select"
-                  value={formData.rol_id}
-                  onChange={e => setFormData({ ...formData, rol_id: Number(e.target.value) })}
+                  disabled={isSubmitting}
                 >
                   <option value={1}>Administrador del Sistema</option>
                   <option value={2}>Coordinador Técnico</option>
@@ -148,22 +178,25 @@ export const CreateUserSheet: React.FC<Props> = ({ isOpen, onClose, onSuccess })
                   <option value={4}>Jefe de Fundación</option>
                   <option value={5}>Trabajador de Campo</option>
                 </select>
+                {errors.rol_id && <p className="sheet-field-error">{errors.rol_id.message}</p>}
               </div>
 
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="sheet-submit"
-              >
-                {isLoading
-                  ? <><Loader2 size={18} style={{ animation: 'spin 0.8s linear infinite' }} /> Creando...</>
-                  : <><ShieldCheck size={18} /> Crear Operador</>
-                }
+              <button type="submit" disabled={isSubmitting} className="sheet-submit">
+                {isSubmitting ? (
+                  <>
+                    <Loader2 size={18} style={{ animation: 'spin 0.8s linear infinite' }} />{' '}
+                    Creando...
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck size={18} /> Crear Operador
+                  </>
+                )}
               </button>
             </form>
           </motion.div>
         </>
       )}
     </AnimatePresence>
-  );
-};
+  )
+}

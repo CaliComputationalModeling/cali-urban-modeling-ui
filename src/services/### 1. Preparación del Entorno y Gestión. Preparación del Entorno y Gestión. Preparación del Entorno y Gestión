@@ -1,0 +1,34 @@
+### 1. Preparación del Entorno y Gestión (Sprint 0)
+*   [ ] **Configurar el tablero Kanban digital:** Organizar las columnas "Por Hacer", "En Proceso", "En Pruebas" y "Completado" en Trello o GitHub Projects.
+*   [ ] **Configurar el control de versiones:** Crear el repositorio centralizado en GitHub e inicializar el proyecto con Git.
+*   [ ] **Instalar el stack tecnológico:** Configurar el entorno con Python, Flask, PostgreSQL y la extensión espacial PostGIS.
+*   [ ] **Cargar librerías de cómputo y análisis:** Instalar NumPy y Pandas para el procesamiento matricial y Plotly/Matplotlib para visualización.
+
+### 2. Construcción del Motor de Autómata Celular (Iteraciones Iniciales 1-X)
+*   [ ] **Programar las Reglas de Transición:** Implementar la lógica matemática del ciclo **I-P-E** (Ingreso, Permanencia y Egreso).
+*   [ ] **Definir la Malla (Grid):** Codificar la estructura bidimensional donde interactúan los agentes, asegurando que el estado de cada celda dependa de sus vecinas.
+*   [ ] **Integrar Factores Ambientales:** Programar la influencia de variables exógenas como el clima (lluvia/sol) y la seguridad en el movimiento de los agentes.
+*   [ ] **Desarrollar el Editor de Reglas:** Crear la interfaz (Rule Editor) para que el Coordinador Técnico ajuste pesos y factores de influencia.
+
+### 3. Integración de Datos y Backend (Iteraciones Intermedias X-Y)
+*   [ ] **Implementar la Ingesta de Datos:** Desarrollar formularios para que los Trabajadores de Campo registren observaciones georreferenciadas (GPS).
+*   [ ] **Crear el Módulo de Importación:** Desarrollar la capacidad de cargar archivos estructurados (CSV/JSON) para alimentar el modelo.
+*   [ ] **Configurar la API REST:** Desarrollar los controladores en Flask para manejar las solicitudes de simulación y la lógica de negocio.
+*   [ ] **Aplicar Seguridad y Anonimización:** Implementar el control de acceso basado en roles (RBAC) con JWT y la lógica de agregación de datos para proteger la identidad de la población.
+
+### 4. Interfaz Visual y Reportes
+*   [ ] **Desarrollar el Dashboard Ejecutivo:** Crear las vistas de indicadores clave (KPIs) para el Jefe de la Fundación.
+*   [ ] **Generar Mapas de Calor (HeatMaps):** Implementar la visualización de densidades históricas y proyectadas de la población.
+*   [ ] **Implementar el Comparador de Escenarios:** Desarrollar la herramienta para visualizar simultáneamente dos simulaciones bajo distintas variables.
+*   [ ] **Generar Rutas Predictivas:** Visualizar en el mapa los flujos de movilidad más probables obtenidos del motor de simulación.
+
+### 5. Estrategia de Pruebas y Calidad (Transversal)
+*   [ ] **Ejecutar Pruebas Unitarias:** Validar individualmente cada regla de transición y comportamiento de los agentes.
+*   [ ] **Realizar Pruebas de Integración:** Verificar la comunicación correcta entre la interfaz de usuario, el motor de simulación y la base de datos PostGIS.
+*   [ ] **Efectuar Pruebas de Aceptación (UAT):** Realizar sesiones de validación con el director del proyecto y otros académicos para asegurar la utilidad y usabilidad.
+
+### 6. Validación Final y Cierre
+*   [ ] **Calibrar el Modelo:** Comparar los resultados simulados con datos reales de campo para identificar desviaciones y ajustar parámetros.
+*   [ ] **Cálculo de Métricas de Error:** Documentar la precisión del modelo mediante métricas como el Error Cuadrático Medio (RMSE).
+*   [ ] **Consolidar Documentación Técnica:** Finalizar el informe con la metodología, variables clave y resultados obtenidos para la entrega de grado.
+*   [ ] **Reuniones de Retroalimentación:** Presentar avances funcionales al asesor cada 15 días para ajustar la planificación de la siguiente iteración.

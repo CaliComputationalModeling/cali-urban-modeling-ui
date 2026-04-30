@@ -1,0 +1,13 @@
+import { z } from 'zod'
+
+export const loginSchema = z.object({
+  email: z.string().email('Correo electrónico inválido'),
+  password: z.string().min(1, 'La contraseña es requerida'),
+})
+
+export type LoginCredentials = z.infer<typeof loginSchema>
+
+export interface LoginResponse {
+  access_token: string
+  token_type: string
+}

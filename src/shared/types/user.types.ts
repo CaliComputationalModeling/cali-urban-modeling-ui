@@ -6,22 +6,17 @@ export enum UserRole {
   FIELD_WORKER = 5,   // Trabajador de campo
 }
 
-export enum UserStatus {
-  ACTIVE = "active",
-  INACTIVE = "inactive",
-}
-
 export interface User {
-  id: number;       
-  nombre_completo: string; 
-  email: string;
-  rol_id: UserRole;    
-  status?: UserStatus;
+  id: number
+  nombre_completo: string
+  email: string
+  rol_id: UserRole
+  activo?: boolean
 }
 
 export interface CreateUserPayload {
-  email: string;
-  password: string;
-  nombre_completo: string;
-  rol_id: number;
+  email: string
+  password: string
+  nombre_completo: string
+  rol_id: number
 }
