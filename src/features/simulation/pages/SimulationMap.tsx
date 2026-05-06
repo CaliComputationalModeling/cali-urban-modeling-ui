@@ -4,20 +4,25 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useSimulationStore } from '@/store/simulationStore'
 import http from '@/services/http'
+import type { GeoJsonResponse } from '@/shared/contracts/simulation.contract'
 
-// ─── Density Color Scale ─────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// DENSITY COLOR SCALE - Green → Yellow → Red
+// ─────────────────────────────────────────────────────────────────────────────
 
 function getDensityColor(ratio: number): string {
-  // HSL: 120 (green) → 60 (yellow) → 0 (red)
+  // HSL: 120 (verde) → 60 (amarillo) → 0 (rojo)
   const hue = 120 * (1 - Math.min(ratio, 1))
   return `hsl(${hue}, 80%, 50%)`
 }
 
 function getDensityRadius(ratio: number): number {
-  return 4 + Math.min(ratio, 1) * 16 // 4px to 20px
+  return 4 + Math.min(ratio, 1) * 16 // 4px a 20px
 }
 
-// ─── POI Icons ───────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// POI ICONS
+// ─────────────────────────────────────────────────────────────────────────────
 
 const POI_ICONS: Record<string, { emoji: string; color: string }> = {
   comedor_social: { emoji: '🍽', color: '#22c55e' },
@@ -38,16 +43,20 @@ const makePOIIcon = (tipo: string) => {
   })
 }
 
-// ─── SimulationMap ───────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// SIMULATION MAP COMPONENT
+// ─────────────────────────────────────────────────────────────────────────────
 
 export const SimulationMap = () => {
-  const data = useSimulationStore((s) => s.data)
+  // Leer del store tipado
+  const geojson = useSimulationStore((s) => s.geojson)
   const currentGeneration = useSimulationStore((s) => s.currentGeneration)
   const status = useSimulationStore((s) => s.status)
+
   const caliCoords: [number, number] = [3.4372, -76.5225]
   const [pois, setPois] = useState<Record<string, unknown>[]>([])
 
-  // Load POIs once on mount
+  // Cargar POIs una sola vez
   useEffect(() => {
     http
       .get<{ pois: Record<string, unknown>[] }>('/observations/pois')
@@ -57,22 +66,30 @@ export const SimulationMap = () => {
       .catch(() => null)
   }, [])
 
-  // Filter null geometries and compute max agents for density normalization
-  const { filteredData, maxAgentes } = useMemo(() => {
-    if (!data) return { filteredData: null, maxAgentes: 1 }
+  // Filtrar geometrías nulas y calcular max densidad para normalización
+  const { filteredGeoJson, maxAgentes } = useMemo(() => {
+    if (!geojson) return { filteredGeoJson: null, maxAgentes: 1 }
 
-    const features = data.features.filter((f) => f.geometry !== null)
+    const features = geojson.features.filter((f) => f.geometry !== null)
+
+    // Encontrar máximo de agentes en esta generación
     let max = 0
     for (const f of features) {
-      const a = (f.properties?.agentes as number) ?? 0
-      if (a > max) max = a
+      const agentes = (f.properties?.agentes as number) ?? 0
+      if (agentes > max) max = agentes
+    }
+
+    const filtered: GeoJsonResponse = {
+      type: 'FeatureCollection',
+      features,
+      metadata: geojson.metadata,
     }
 
     return {
-      filteredData: { ...data, features },
+      filteredGeoJson: filtered,
       maxAgentes: Math.max(max, 1),
     }
-  }, [data])
+  }, [geojson])
 
   const isRunning = status === 'running'
 
@@ -95,11 +112,11 @@ export const SimulationMap = () => {
           attribution="&copy; CARTO"
         />
 
-        {/* Simulation agents — density-based coloring */}
-        {filteredData && filteredData.features.length > 0 && (
+        {/* Agentes de simulación - coloreado por densidad */}
+        {filteredGeoJson && filteredGeoJson.features.length > 0 && (
           <GeoJSON
-            key={`sim-${currentGeneration}-${filteredData.features.length}`}
-            data={filteredData}
+            key={`sim-${currentGeneration}-${filteredGeoJson.features.length}`}
+            data={filteredGeoJson as any}
             pointToLayer={(feature, latlng) => {
               const agentes = (feature.properties?.agentes as number) ?? 0
               const ratio = agentes / maxAgentes
@@ -115,8 +132,8 @@ export const SimulationMap = () => {
             }}
             onEachFeature={(feature, layer) => {
               const agentes = (feature.properties?.agentes as number) ?? 0
-              const x = feature.properties?.x ?? '?'
-              const y = feature.properties?.y ?? '?'
+              const x = (feature.properties?.x as number) ?? '?'
+              const y = (feature.properties?.y as number) ?? '?'
               const ratio = agentes / maxAgentes
               const densityPct = (ratio * 100).toFixed(1)
 
@@ -128,7 +145,7 @@ export const SimulationMap = () => {
           />
         )}
 
-        {/* Fixed POI markers */}
+        {/* Markers fijos de POI */}
         {pois.map((poi) => {
           const lat = poi.latitud as number
           const lon = poi.longitud as number
@@ -148,6 +165,36 @@ export const SimulationMap = () => {
                 <br />
                 Radio: {poi.radio_influencia as number} celdas
               </Popup>
+            </Marker>
+          )
+        })}
+      </MapContainer>
+
+      {/* Badge de generación */}
+      <div className="sim-map-badge">
+        <span
+          className="sim-map-badge-dot"
+          style={{ animationPlayState: isRunning ? 'running' : 'paused' }}
+        />
+        GEN_{currentGeneration.toString().padStart(5, '0')}
+      </div>
+
+      {/* Leyenda de densidad */}
+      <div className="sim-map-legend">
+        <span className="sim-legend-title">DENSIDAD</span>
+        <div className="sim-legend-gradient">
+          <div className="sim-legend-bar" />
+          <div className="sim-legend-labels">
+            <span>Baja</span>
+            <span>Media</span>
+            <span>Alta</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
             </Marker>
           )
         })}

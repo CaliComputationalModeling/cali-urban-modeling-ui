@@ -1,47 +1,57 @@
 import { http } from '../http'
 import type {
-  Simulation,
-  SimulationCreateRequest,
-  SimulationRunRequest,
-  SimulationRunResponse,
-  SimulationProgress,
-  SimulationResults,
-  SimulationStatistics,
-} from '@/shared/types/simulation.types'
-import type { FeatureCollection, Geometry } from 'geojson'
+  SimulationId,
+  CreateSimulationRequest,
+  CreateSimulationResponse,
+  RunStepResponse,
+  ResetSimulationResponse,
+} from '@/shared/contracts/simulation.contract'
+
+/**
+ * ENDPOINTS DE SIMULACIÓN - REFACTORIZADO PARA CONTRATO UNIFICADO
+ *
+ * Principios:
+ * - 1 request por tick: runStep devuelve geojson + urban_state juntos
+ * - Tipado fuerte con contratos
+ * - IDs siempre como string (SimulationId)
+ * - Sin any
+ */
 
 export const simulationEndpoints = {
-  // CRUD
-  getAll: (limit = 10, offset = 0) =>
-    http.get<{ items: Simulation[]; total: number }>(
-      `/simulations?limit=${limit}&offset=${offset}`,
+  /**
+   * Crear nueva simulación espacial
+   * POST /api/simulaciones/ejecutar
+   *
+   * Cuerpo esperado: CreateSimulationRequest
+   * Respuesta: CreateSimulationResponse (con simulation_id)
+   */
+  createSimulation: (data: CreateSimulationRequest) =>
+    http.post<CreateSimulationResponse>('/simulaciones/ejecutar', data),
+
+  /**
+   * Ejecutar 1 paso de simulación - ENDPOINT UNIFICADO
+   * POST /api/simulations/{id}/run-espacial
+   *
+   * Devuelve en 1 request:
+   * - geojson completo (GeoFeatures con propiedades de celda)
+   * - urban_state (métricas agregadas)
+   * - metadata (generación, timestamp, etc.)
+   * - flag completada (backend indica si terminó)
+   *
+   * Cuerpo: { generations: 1 }
+   */
+  runStep: (simulationId: SimulationId, generations: number = 1) =>
+    http.post<RunStepResponse>(
+      `/simulations/${simulationId}/run-espacial`,
+      { generations },
     ),
-  getById: (id: number | string) => http.get<Simulation>(`/simulations/${id}`),
-  create: (data: SimulationCreateRequest) => http.post<Simulation>('/simulations', data),
-  createSpatial: (data: SimulationCreateRequest, nAgentes = 100) =>
-    http.post<Simulation>(`/simulations/espacial?n_agentes=${nAgentes}`, data),
-  stop: (id: number | string) => http.delete(`/simulations/${id}`),
-  cancel: (id: number | string) => http.delete(`/simulations/${id}/cancelar`),
 
-  // Ejecucion
-  run: (id: number | string, data: SimulationRunRequest) =>
-    http.post<SimulationRunResponse>(`/simulations/${id}/run`, data),
-  runSpatial: (id: number | string, data: SimulationRunRequest) =>
-    http.post<SimulationRunResponse>(`/simulations/${id}/run-espacial`, data),
-  reset: (id: number | string) => http.post(`/simulations/${id}/reset`, {}),
-
-  // Monitoreo
-  getStatistics: (id: number | string) =>
-    http.get<SimulationStatistics>(`/simulations/${id}/statistics`),
-  getProgress: (id: number | string) =>
-    http.get<SimulationProgress>(`/simulations/${id}/progreso`),
-  getResults: (id: number | string) =>
-    http.get<SimulationResults>(`/simulations/${id}/resultados`),
-  getGeoJson: (id: number | string) =>
-    http.get<FeatureCollection<Geometry>>(`/simulations/${id}/geojson`),
-  getUrbanState: (id: number | string) =>
-    http.get(`/simulations/${id}/estado-urbano`),
-  getServerStatus: () => http.get('/simulations/estado-servidor'),
-  validateInputs: (data: { escenario_id?: number; regla_id?: number }) =>
-    http.post('/simulations/validar-inputs', data),
+  /**
+   * Resetear simulación
+   * POST /api/simulations/{id}/reset
+   *
+   * Respuesta: estado inicial (generación 0)
+   */
+  resetSimulation: (simulationId: SimulationId) =>
+    http.post<ResetSimulationResponse>(`/simulations/${simulationId}/reset`, {}),
 }

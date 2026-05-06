@@ -1,9 +1,23 @@
 import { create } from 'zustand'
 import { simulationEndpoints } from '@/services/endpoints'
-import type { FeatureCollection, Geometry } from 'geojson'
+import {
+  type SimulationId,
+  type SimulationStatus,
+  type HistoryPoint,
+  type GeoJsonResponse,
+  type UrbanState,
+  createSimulationId,
+  SPEED_OPTIONS,
+  type CreateSimulationRequest,
+  type CreateSimulationResponse,
+  type RunStepResponse,
+} from '@/shared/contracts/simulation.contract'
 import type { CreateSimulationFormData } from '@/shared/types/simulation.types'
 
-// ─── Timer Management ────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// TIMER MANAGEMENT
+// Timer variable a nivel de módulo para limpieza determinista
+// ─────────────────────────────────────────────────────────────────────────────
 
 let tickTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -14,46 +28,35 @@ function clearTick() {
   }
 }
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// STORE STATE
+// ─────────────────────────────────────────────────────────────────────────────
 
-export interface SimulationStats {
-  totalAgentes: number
-  livingCells: number
-  density: number
-  maxDensity: number
-  executionTime: string
-  enTransito: number
-  enCambuche: number
-  enComedor: number
-  enZonaConsumo: number
-  enZonaRepulsora: number
-}
+export interface SimulationStoreState {
+  // Identificadores
+  simulationId: SimulationId | null
 
-export interface HistoryPoint {
-  name: string
-  totalAgentes: number
-  enTransito: number
-  enComedor: number
-  enCambuche: number
-}
-
-export type SimulationStatus = 'idle' | 'running' | 'paused' | 'error' | 'completed'
-
-export interface SimulationState {
-  simulationId: string | null
+  // Control de ejecución
   status: SimulationStatus
   currentGeneration: number
   maxGenerations: number
-  speed: number
-  data: FeatureCollection<Geometry> | null
+  speed: number // intervalMs (500, 1000, 2000)
+
+  // Datos actuales (desde endpoint unificado)
+  geojson: GeoJsonResponse | null
+  urbanState: UrbanState | null
+
+  // Histórico para gráficas
   history: HistoryPoint[]
-  stats: SimulationStats
+
+  // Indicadores de estado
   error: string | null
   retryCount: number
   backendConnected: boolean
 
+  // Acciones
   createSimulation: (config: CreateSimulationFormData) => Promise<void>
-  setSimulationId: (id: string) => void
+  setSimulationId: (id: SimulationId) => void
   disconnect: () => void
   startSimulation: () => void
   pauseSimulation: () => void
@@ -61,41 +64,54 @@ export interface SimulationState {
   resetSimulation: () => Promise<void>
   setSpeed: (ms: number) => void
   setMaxGenerations: (max: number) => void
-  fetchNextStep: () => Promise<void>
 }
 
-// ─── Initial State ────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// INITIAL STATE
+// ─────────────────────────────────────────────────────────────────────────────
 
-const INITIAL_STATS: SimulationStats = {
-  totalAgentes: 0,
-  livingCells: 0,
-  density: 0,
-  maxDensity: 0,
-  executionTime: '00:00:00',
-  enTransito: 0,
-  enCambuche: 0,
-  enComedor: 0,
-  enZonaConsumo: 0,
-  enZonaRepulsora: 0,
+const INITIAL_STATE = {
+  simulationId: null,
+  status: 'idle' as SimulationStatus,
+  currentGeneration: 0,
+  maxGenerations: 100,
+  speed: SPEED_OPTIONS.NORMAL,
+  geojson: null,
+  urbanState: null,
+  history: [],
+  error: null,
+  retryCount: 0,
+  backendConnected: true,
 }
 
-// ─── Store ────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// ZUSTAND STORE
+// ─────────────────────────────────────────────────────────────────────────────
 
-export const useSimulationStore = create<SimulationState>((set, get) => {
+export const useSimulationStore = create<SimulationStoreState>((set, get) => {
+  /**
+   * Programa el siguiente tick del loop de simulación
+   * Usa setTimeout recursivo para evitar acumulación de requestos
+   */
   function scheduleTick() {
     clearTick()
     tickTimer = setTimeout(async () => {
       const state = get()
+
+      // Solo ejecutar si status === 'running'
       if (state.status !== 'running') return
 
+      // Verificar si hemos alcanzado el máximo de generaciones
       if (state.currentGeneration >= state.maxGenerations) {
+        clearTick()
         set({ status: 'completed' })
         return
       }
 
-      await state.fetchNextStep()
+      // Ejecutar paso
+      await get().stepSimulation()
 
-      // Schedule next tick only if still running after fetch
+      // Programar siguiente tick si aún estamos corriendo
       if (get().status === 'running') {
         scheduleTick()
       }
@@ -103,73 +119,86 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
   }
 
   return {
-    simulationId: null,
-    status: 'idle',
-    currentGeneration: 0,
-    maxGenerations: 100,
-    speed: 1000,
-    data: null,
-    history: [],
-    stats: INITIAL_STATS,
-    error: null,
-    retryCount: 0,
-    backendConnected: true,
+    // ESTADO INICIAL
+    ...INITIAL_STATE,
 
-    createSimulation: async (config) => {
+    // ─────────────────────────────────────────────────────────────────────────
+    // ACCIÓN: Crear nueva simulación
+    // POST /api/simulations/espacial → Crea simulación con configuración
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createSimulation: async (config: CreateSimulationFormData) => {
       set({ error: null })
-      try {
-        const res = await simulationEndpoints.createSpatial(
-          {
-            name: config.nombre,
-            description: config.descripcion,
-            grid_config: {
-              width: config.columnas,
-              height: config.filas,
-              neighborhood_type: 'moore',
-              boundary_mode: 'toroidal',
-              geospatial_bounds: {
-                lat_min: 3.38,
-                lat_max: 3.5,
-                lon_min: -76.56,
-                lon_max: -76.46,
-              },
-            },
-            rule: { rule_type: 'conway', birth: [3], survival: [2, 3] },
-          },
-          config.agentes_iniciales,
-        )
 
-        if (res.ok && res.data?.simulation_id) {
-          set({
-            simulationId: String(res.data.simulation_id),
-            status: 'idle',
-            currentGeneration: 0,
-            data: null,
-            history: [],
-            stats: INITIAL_STATS,
-            error: null,
-            retryCount: 0,
-            backendConnected: true,
-          })
-        } else {
-          set({ error: 'No se pudo crear la simulacion' })
+      try {
+        const request: CreateSimulationRequest = {
+          nombre: config.nombre,
+          descripcion: config.descripcion,
+          grid_config: {
+            filas: config.filas,
+            columnas: config.columnas,
+            boundary_mode: 'toroidal',
+            neighborhood_type: 'moore',
+            geospatial_bounds: {
+              lat_min: 3.38,
+              lat_max: 3.5,
+              lon_min: -76.56,
+              lon_max: -76.46,
+            },
+          },
+          agentes_iniciales: config.agentes_iniciales,
+          max_generaciones: 1000,
         }
-      } catch {
-        set({ error: 'Error de conexion con el backend', backendConnected: false })
+
+        const response = await simulationEndpoints.createSimulation(request)
+
+        if (!response.ok || !response.data) {
+          throw new Error(response.data?.error || 'No se pudo crear la simulación')
+        }
+
+        const data: CreateSimulationResponse = response.data
+
+        set({
+          simulationId: createSimulationId(data.simulation_id),
+          status: 'idle',
+          currentGeneration: 0,
+          geojson: null,
+          urbanState: null,
+          history: [],
+          error: null,
+          retryCount: 0,
+          backendConnected: true,
+        })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Error desconocido'
+        set({
+          error: `Error al crear simulación: ${message}`,
+          backendConnected: false,
+        })
       }
     },
 
-    setSimulationId: (id) =>
+    // ─────────────────────────────────────────────────────────────────────────
+    // ACCIÓN: Conectar a simulación existente
+    // ─────────────────────────────────────────────────────────────────────────
+
+    setSimulationId: (id: SimulationId) => {
       set({
         simulationId: id,
         status: 'idle',
         currentGeneration: 0,
-        data: null,
+        geojson: null,
+        urbanState: null,
         history: [],
-        stats: INITIAL_STATS,
         error: null,
         retryCount: 0,
-      }),
+        backendConnected: true,
+      })
+    },
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ACCIÓN: Desconectar simulación
+    // ─────────────────────────────────────────────────────────────────────────
 
     disconnect: () => {
       clearTick()
@@ -177,20 +206,29 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
         simulationId: null,
         status: 'idle',
         currentGeneration: 0,
-        data: null,
+        geojson: null,
+        urbanState: null,
         history: [],
-        stats: INITIAL_STATS,
         error: null,
         retryCount: 0,
       })
     },
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // ACCIÓN: Iniciar simulación
+    // ─────────────────────────────────────────────────────────────────────────
+
     startSimulation: () => {
       const { simulationId, status } = get()
       if (!simulationId || status === 'running') return
-      set({ status: 'running', error: null, retryCount: 0 })
+
+      set({ status: 'running', error: null, retryCount: 0, backendConnected: true })
       scheduleTick()
     },
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ACCIÓN: Pausar simulación
+    // ─────────────────────────────────────────────────────────────────────────
 
     pauseSimulation: () => {
       clearTick()
@@ -199,125 +237,153 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
       }
     },
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // ACCIÓN: Ejecutar 1 paso (manual o dentro del loop)
+    // POST /api/simulations/{id}/run-espacial
+    // RESPUESTA UNIFICADA: { geojson, urban_state, success, error }
+    // ─────────────────────────────────────────────────────────────────────────
+
     stepSimulation: async () => {
       const { simulationId, status } = get()
-      if (!simulationId || status === 'running') return
+
+      // Evitar ejecuciones mientras está corriendo automáticamente
+      if (!simulationId || status === 'running' || status === 'completed') return
+
       set({ error: null })
-      await get().fetchNextStep()
+
+      try {
+        // ✨ ENDPOINT UNIFICADO: 1 request que devuelve TODO
+        const response = await simulationEndpoints.runStep(simulationId, 1)
+
+        if (!response.ok || !response.data) {
+          throw new Error(response.data?.error || 'Error al ejecutar paso')
+        }
+
+        const data: RunStepResponse = response.data
+
+        if (!data.success) {
+          throw new Error(data.error || 'Fallo en ejecución del paso')
+        }
+
+        // Extraer datos de respuesta unificada
+        const geojson: GeoJsonResponse = data.geojson
+        const urbanState: UrbanState = data.urban_state
+
+        // Construir punto de histórico para gráfica
+        const newHistoryPoint: HistoryPoint = {
+          generacion: urbanState.generacion,
+          total_agentes: urbanState.total_agentes,
+          en_transito: urbanState.en_transito,
+          en_comedor: urbanState.en_comedor,
+          en_cambuche: urbanState.en_cambuche,
+          zona_consumo: urbanState.zona_consumo,
+          zona_repulsora: urbanState.zona_repulsora,
+          timestamp: Date.now(),
+        }
+
+        // Actualizar store
+        set((state) => ({
+          geojson,
+          urbanState,
+          currentGeneration: urbanState.generacion,
+          retryCount: 0,
+          backendConnected: true,
+          error: null,
+          history: [...state.history, newHistoryPoint].slice(-50), // Mantener últimos 50
+
+          // Si backend dice completada, transicionar
+          status: urbanState.completada ? 'completed' : state.status,
+        }))
+
+        // Si completada y estamos corriendo, parar loop
+        if (urbanState.completada && get().status === 'completed') {
+          clearTick()
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Error desconocido'
+        const newRetryCount = get().retryCount + 1
+
+        // Si alcanzamos 3 reintentos, marcar como error
+        if (newRetryCount >= 3) {
+          clearTick()
+          set({
+            status: 'error',
+            error: `Error de conexión tras ${newRetryCount} reintentos. Simulación pausada.`,
+            retryCount: newRetryCount,
+            backendConnected: false,
+          })
+        } else {
+          // Mostrar mensaje de reintento y dejar que loop continúe
+          set({
+            retryCount: newRetryCount,
+            error: `Reintentando... (${newRetryCount}/3): ${message}`,
+          })
+        }
+      }
     },
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ACCIÓN: Resetear simulación
+    // POST /api/simulations/{id}/reset
+    // ─────────────────────────────────────────────────────────────────────────
 
     resetSimulation: async () => {
       clearTick()
       const { simulationId } = get()
-      if (simulationId) {
-        await simulationEndpoints.reset(simulationId).catch(() => null)
+
+      if (!simulationId) {
+        set({
+          status: 'idle',
+          currentGeneration: 0,
+          geojson: null,
+          urbanState: null,
+          history: [],
+          error: null,
+        })
+        return
       }
-      set({
-        status: 'idle',
-        currentGeneration: 0,
-        data: null,
-        history: [],
-        stats: INITIAL_STATS,
-        error: null,
-        retryCount: 0,
-      })
-    },
-
-    setSpeed: (ms) => set({ speed: ms }),
-    setMaxGenerations: (max) => set({ maxGenerations: max }),
-
-    fetchNextStep: async () => {
-      const { simulationId, currentGeneration } = get()
-      if (!simulationId) return
 
       try {
-        // 1. Execute one spatial step
-        await simulationEndpoints.runSpatial(simulationId, { generations: 1 })
+        const response = await simulationEndpoints.resetSimulation(simulationId)
 
-        // 2. Get GeoJSON for map
-        const geoRes = await simulationEndpoints.getGeoJson(simulationId)
-
-        // 3. Get urban stats
-        const urbanRes = await simulationEndpoints.getUrbanState(simulationId)
-
-        if (!geoRes.ok || !geoRes.data) {
-          throw new Error('No se pudo obtener datos GeoJSON')
-        }
-
-        const geojson = geoRes.data
-        const meta = (geojson as unknown as { properties?: Record<string, unknown> }).properties ?? {}
-        const urbanData = urbanRes.data as Record<string, unknown> | undefined
-        const urban = (urbanData?.urban_stats as Record<string, number>) ?? {}
-        const gridMeta = (urbanData?.grid as Record<string, number>) ?? {}
-
-        const activeCells =
-          (meta.alive_cells as number) ?? gridMeta.alive_cells ?? geojson.features.length
-        const density = (meta.density as number) ?? gridMeta.population_density ?? 0
-        const generation =
-          (meta.generation as number) ?? gridMeta.generation ?? currentGeneration + 1
-        const totalAgentes = urban.total_agentes ?? activeCells
-
-        // Compute max density from features
-        let maxAgentes = 0
-        for (const f of geojson.features) {
-          const a = (f.properties?.agentes as number) ?? 0
-          if (a > maxAgentes) maxAgentes = a
-        }
-
-        const newPoint: HistoryPoint = {
-          name: `G${generation}`,
-          totalAgentes,
-          enTransito: urban.en_transito ?? 0,
-          enComedor: urban.en_comedor ?? 0,
-          enCambuche: urban.en_cambuche ?? 0,
-        }
-
-        set((state) => ({
-          data: geojson,
-          currentGeneration: generation,
-          retryCount: 0,
-          backendConnected: true,
-          error: null,
-          stats: {
-            livingCells: activeCells,
-            density,
-            maxDensity: maxAgentes,
-            executionTime: new Date().toLocaleTimeString([], {
-              hour: '2-digit',
-              minute: '2-digit',
-              second: '2-digit',
-            }),
-            enTransito: urban.en_transito ?? 0,
-            enCambuche: urban.en_cambuche ?? 0,
-            enComedor: urban.en_comedor ?? 0,
-            enZonaConsumo: urban.en_zona_consumo ?? 0,
-            enZonaRepulsora: urban.en_zona_repulsora ?? 0,
-            totalAgentes,
-          },
-          history: [...state.history, newPoint].slice(-50),
-        }))
-
-        // Check max generations
-        if (generation >= get().maxGenerations && get().status === 'running') {
-          clearTick()
-          set({ status: 'completed' })
-        }
-      } catch (error) {
-        console.error('Error en fetchNextStep:', error)
-        const retryCount = get().retryCount + 1
-
-        if (retryCount >= 3) {
-          clearTick()
+        if (response.ok) {
           set({
-            status: 'error',
-            error: 'Error de conexion con el backend. Simulacion pausada tras 3 reintentos.',
-            retryCount,
-            backendConnected: false,
+            status: 'idle',
+            currentGeneration: 0,
+            geojson: null,
+            urbanState: null,
+            history: [],
+            error: null,
+            retryCount: 0,
+            backendConnected: true,
           })
         } else {
-          set({ retryCount, error: `Reintentando... (${retryCount}/3)` })
+          set({ error: 'No se pudo resetear la simulación' })
         }
+      } catch (error) {
+        set({ error: 'Error al resetear: ' + (error instanceof Error ? error.message : 'Desconocido') })
       }
+    },
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ACCIÓN: Cambiar velocidad
+    // ─────────────────────────────────────────────────────────────────────────
+
+    setSpeed: (ms: number) => {
+      set({ speed: ms })
+      // Si está corriendo, reprogramar el timer con la nueva velocidad
+      if (get().status === 'running') {
+        scheduleTick()
+      }
+    },
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ACCIÓN: Establecer máximo de generaciones
+    // ─────────────────────────────────────────────────────────────────────────
+
+    setMaxGenerations: (max: number) => {
+      set({ maxGenerations: Math.max(1, max) })
     },
   }
 })
+
