@@ -52,7 +52,7 @@ const menuItems = [
     icon: MapIcon,
     label: 'Cartografía',
     section: 'OPERACIONES',
-    roles: [UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FOUNDATION_HEAD, UserRole.FIELD_WORKER],
+    roles: [UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FIELD_WORKER],
   },
   {
     path: '/reports',

@@ -6,6 +6,9 @@ import { PermissionGate } from '@/features/auth/components/PermissionGate'
 import { DashboardLayout } from '@/layouts/DashboardLayout'
 import { UserPage } from '@/features/users/pages/UserPage'
 import { SimulationPage } from '@/features/simulation/pages/SimulationPage'
+import { ExecutiveDashboardPage } from '@/features/dashboard/pages/ExecutiveDashboardPage'
+import { MapsPage } from '@/features/maps/pages/MapsPage'
+import { ReportsPage } from '@/features/reports/pages/ReportsPage'
 import { UserRole } from '@/shared/types/user.types'
 
 export const AppRouter = () => {
@@ -22,12 +25,17 @@ export const AppRouter = () => {
           path="/dashboard"
           element={
             <DashboardLayout>
-              <div className="animate-in">
-                <h1 className="headline" style={{ fontSize: '40px' }}>
-                  Resumen del Sistema
-                </h1>
-                <p className="text-muted">Bienvenido a la consola de control SIMCORE.</p>
-              </div>
+              <PermissionGate
+                allowedRoles={[
+                  UserRole.ADMIN,
+                  UserRole.COORDINATOR,
+                  UserRole.TECHNICIAN,
+                  UserRole.FOUNDATION_HEAD,
+                  UserRole.FIELD_WORKER,
+                ]}
+              >
+                <ExecutiveDashboardPage />
+              </PermissionGate>
             </DashboardLayout>
           }
         />
@@ -47,7 +55,31 @@ export const AppRouter = () => {
           path="/simulation"
           element={
             <DashboardLayout>
-              <SimulationPage />
+              <PermissionGate allowedRoles={[UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN]}>
+                <SimulationPage />
+              </PermissionGate>
+            </DashboardLayout>
+          }
+        />
+
+        <Route
+          path="/maps"
+          element={
+            <DashboardLayout>
+              <PermissionGate allowedRoles={[UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FIELD_WORKER]}>
+                <MapsPage />
+              </PermissionGate>
+            </DashboardLayout>
+          }
+        />
+
+        <Route
+          path="/reports"
+          element={
+            <DashboardLayout>
+              <PermissionGate allowedRoles={[UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FOUNDATION_HEAD]}>
+                <ReportsPage />
+              </PermissionGate>
             </DashboardLayout>
           }
         />

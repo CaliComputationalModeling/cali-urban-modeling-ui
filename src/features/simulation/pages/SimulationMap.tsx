@@ -1,23 +1,24 @@
 import { useMemo, useEffect, useState } from 'react'
-import { MapContainer, TileLayer, GeoJSON, Marker, Popup } from 'react-leaflet'
+import { MapContainer, TileLayer, GeoJSON, Marker, Popup, Polyline, CircleMarker } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useSimulationStore } from '@/store/simulationStore'
 import http from '@/services/http'
 import type { GeoJsonResponse } from '@/shared/contracts/simulation.contract'
+import { mapsEndpoints } from '@/services/endpoints/maps.endpoints'
+import { simulationEndpoints } from '@/services/endpoints/simulation.endpoints'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DENSITY COLOR SCALE - Green → Yellow → Red
 // ─────────────────────────────────────────────────────────────────────────────
 
 function getDensityColor(ratio: number): string {
-  // HSL: 120 (verde) → 60 (amarillo) → 0 (rojo)
   const hue = 120 * (1 - Math.min(ratio, 1))
   return `hsl(${hue}, 80%, 50%)`
 }
 
 function getDensityRadius(ratio: number): number {
-  return 4 + Math.min(ratio, 1) * 16 // 4px a 20px
+  return 4 + Math.min(ratio, 1) * 16
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -48,13 +49,17 @@ const makePOIIcon = (tipo: string) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const SimulationMap = () => {
-  // Leer del store tipado
   const geojson = useSimulationStore((s) => s.geojson)
   const currentGeneration = useSimulationStore((s) => s.currentGeneration)
   const status = useSimulationStore((s) => s.status)
+  const simulationId = useSimulationStore((s) => s.simulationId)
 
   const caliCoords: [number, number] = [3.4372, -76.5225]
   const [pois, setPois] = useState<Record<string, unknown>[]>([])
+  const [routes, setRoutes] = useState<{ origen: {lat:number,lon:number}, destino:{lat:number,lon:number}, intensidad:number }[]>([])
+  const [heatmapCells, setHeatmapCells] = useState<{ lat:number; lon:number; densidad:number }[]>([])
+  const [steps, setSteps] = useState<GeoJsonResponse[] | null>(null)
+  const [selectedStep, setSelectedStep] = useState<number | null>(null)
 
   // Cargar POIs una sola vez
   useEffect(() => {
@@ -66,13 +71,56 @@ export const SimulationMap = () => {
       .catch(() => null)
   }, [])
 
+  // Fetch predicted routes when we have a simulation execution id
+  useEffect(() => {
+    if (!simulationId) return
+
+    mapsEndpoints
+      .getPredictedRoutes(String(simulationId))
+      .then((res) => {
+        if (res.ok && res.data?.rutas) {
+          setRoutes(res.data.rutas)
+        }
+      })
+      .catch(() => null)
+  }, [simulationId, currentGeneration])
+
+  // Fetch heatmap (historical density)
+  useEffect(() => {
+    mapsEndpoints
+      .getHeatmap()
+      .then((res) => {
+        if (res.ok && Array.isArray(res.data)) {
+          setHeatmapCells(res.data.map((c: any) => ({ lat: c.lat, lon: c.lon, densidad: c.densidad })))
+        }
+      })
+      .catch(() => null)
+  }, [])
+
+  // Fetch steps/matrices for timeline if we have a simulation id
+  useEffect(() => {
+    if (!simulationId) return
+    simulationEndpoints
+      .getSimulationSteps(String(simulationId))
+      .then((res) => {
+        if (res.ok && res.data) {
+          // Expecting an array of GeoJsonResponse-like objects
+          const parsed = Array.isArray(res.data) ? res.data : null
+          if (parsed) {
+            setSteps(parsed)
+            setSelectedStep(parsed.length > 0 ? parsed.length - 1 : null)
+          }
+        }
+      })
+      .catch(() => null)
+  }, [simulationId])
+
   // Filtrar geometrías nulas y calcular max densidad para normalización
   const { filteredGeoJson, maxAgentes } = useMemo(() => {
     if (!geojson) return { filteredGeoJson: null, maxAgentes: 1 }
 
     const features = geojson.features.filter((f) => f.geometry !== null)
 
-    // Encontrar máximo de agentes en esta generación
     let max = 0
     for (const f of features) {
       const agentes = (f.properties?.agentes as number) ?? 0
@@ -113,10 +161,11 @@ export const SimulationMap = () => {
         />
 
         {/* Agentes de simulación - coloreado por densidad */}
-        {filteredGeoJson && filteredGeoJson.features.length > 0 && (
+        {/** If steps timeline selected, show that step otherwise current geojson */}
+        {(steps && selectedStep !== null ? steps[selectedStep] : filteredGeoJson) && (
           <GeoJSON
-            key={`sim-${currentGeneration}-${filteredGeoJson.features.length}`}
-            data={filteredGeoJson as any}
+            key={`sim-${currentGeneration}-${filteredGeoJson?.features.length ?? 0}-${selectedStep ?? 'curr'}`}
+            data={(steps && selectedStep !== null ? steps[selectedStep] : filteredGeoJson) as any}
             pointToLayer={(feature, latlng) => {
               const agentes = (feature.properties?.agentes as number) ?? 0
               const ratio = agentes / maxAgentes
@@ -145,81 +194,65 @@ export const SimulationMap = () => {
           />
         )}
 
-        {/* Markers fijos de POI */}
-        {pois.map((poi) => {
-          const lat = poi.latitud as number
-          const lon = poi.longitud as number
-          if (!lat || !lon) return null
+        {/* Predicted routes as polylines */}
+        {routes.map((r, idx) => (
+          <Polyline
+            key={`route-${idx}`}
+            positions={[[r.origen.lat, r.origen.lon], [r.destino.lat, r.destino.lon]]}
+            pathOptions={{ color: r.intensidad > 0.5 ? '#ff6b6b' : '#60a5fa', weight: 2, opacity: 0.8 }}
+          />
+        ))}
+
+        {/* Heatmap (historical density) */}
+        {heatmapCells.map((c, idx) => {
+          const color = getDensityColor(c.densidad)
           return (
-            <Marker
-              key={poi.id as string}
-              position={[lat, lon]}
-              icon={makePOIIcon(poi.tipo_poi as string)}
-            >
-              <Popup>
-                <b>{poi.nombre as string}</b>
-                <br />
-                Tipo: {poi.tipo_poi as string}
-                <br />
-                Peso: {poi.peso as number}
-                <br />
-                Radio: {poi.radio_influencia as number} celdas
-              </Popup>
-            </Marker>
+            <CircleMarker
+              key={`heat-${idx}`}
+              center={[c.lat, c.lon]}
+              radius={Math.max(3, c.densidad * 12)}
+              pathOptions={{ fillColor: color, color: color, fillOpacity: 0.35, opacity: 0.6 }}
+            />
           )
         })}
+
+        {/* Markers fijos de POI */}
+        {pois
+          .filter((poi) => !!(poi.latitud as number) && !!(poi.longitud as number))
+          .map((poi) => {
+            const lat = poi.latitud as number
+            const lon = poi.longitud as number
+            return (
+              <Marker
+                key={poi.id as string}
+                position={[lat, lon]}
+                icon={makePOIIcon(poi.tipo_poi as string)}
+              >
+                <Popup>
+                  <b>{poi.nombre as string}</b>
+                  <br />
+                  Tipo: {poi.tipo_poi as string}
+                  <br />
+                  Peso: {poi.peso as number}
+                  <br />
+                  Radio: {poi.radio_influencia as number} celdas
+                </Popup>
+              </Marker>
+            )
+          })}
+
       </MapContainer>
 
-      {/* Badge de generación */}
-      <div className="sim-map-badge">
-        <span
-          className="sim-map-badge-dot"
-          style={{ animationPlayState: isRunning ? 'running' : 'paused' }}
-        />
-        GEN_{currentGeneration.toString().padStart(5, '0')}
-      </div>
-
-      {/* Leyenda de densidad */}
-      <div className="sim-map-legend">
-        <span className="sim-legend-title">DENSIDAD</span>
-        <div className="sim-legend-gradient">
-          <div className="sim-legend-bar" />
-          <div className="sim-legend-labels">
-            <span>Baja</span>
-            <span>Media</span>
-            <span>Alta</span>
+      {/* Timeline slider and controls */}
+      <div style={{ position: 'absolute', left: 12, bottom: 12, zIndex: 550, background: 'rgba(13,16,23,0.8)', padding: 8, borderRadius: 8, color: '#fff' }}>
+        {steps && steps.length > 0 ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button onClick={() => setSelectedStep((s) => (s !== null ? Math.max(0, s - 1) : steps.length - 1))}>◀</button>
+            <input type="range" min={0} max={steps.length - 1} value={selectedStep ?? steps.length - 1} onChange={(e) => setSelectedStep(Number(e.target.value))} />
+            <button onClick={() => setSelectedStep((s) => (s !== null ? Math.min(steps.length - 1, s + 1) : 0))}>▶</button>
+            <div style={{ minWidth: 120 }}>Paso: {selectedStep !== null ? selectedStep : '—'} / {steps.length - 1}</div>
           </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-            </Marker>
-          )
-        })}
-      </MapContainer>
-
-      {/* Generation badge */}
-      <div className="sim-map-badge">
-        <span
-          className="sim-map-badge-dot"
-          style={{ animationPlayState: isRunning ? 'running' : 'paused' }}
-        />
-        GEN_{currentGeneration.toString().padStart(5, '0')}
-      </div>
-
-      {/* Density legend */}
-      <div className="sim-map-legend">
-        <span className="sim-legend-title">DENSIDAD</span>
-        <div className="sim-legend-gradient">
-          <div className="sim-legend-bar" />
-          <div className="sim-legend-labels">
-            <span>Baja</span>
-            <span>Media</span>
-            <span>Alta</span>
-          </div>
-        </div>
+        ) : null}
       </div>
     </div>
   )

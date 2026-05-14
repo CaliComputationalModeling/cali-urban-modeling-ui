@@ -54,4 +54,21 @@ export const simulationEndpoints = {
    */
   resetSimulation: (simulationId: SimulationId) =>
     http.post<ResetSimulationResponse>(`/simulations/${simulationId}/reset`, {}),
+
+  // Actualizar pesos de una regla de transición
+  // PUT /api/reglas/{id}/pesos  body: { frio:number, comida:number, seguridad:number }
+  updateRuleWeights: (ruleId: number, weights: { frio: number; comida: number; seguridad: number }) =>
+    http.put(`/api/reglas/${encodeURIComponent(String(ruleId))}/pesos`, weights),
+
+  // Crear escenario
+  // POST /api/escenarios/  body: { nombre, clima: { temperatura, lluvia }, seguridad, malla: { filas, columnas } }
+  createScenario: (payload: Record<string, unknown>) => http.post('/api/escenarios/', payload),
+
+  // Obtener pasos/matrices de una simulación
+  // GET /api/simulaciones/{id}/pasos
+  getSimulationSteps: (simulationId: SimulationId) => http.get(`/api/simulaciones/${encodeURIComponent(String(simulationId))}/pasos`),
+
+  // Comparar simulaciones
+  // GET /api/simulaciones/comparar?ids=id1,id2
+  compareSimulations: (ids: string[]) => http.get(`/api/simulaciones/comparar?ids=${ids.map(encodeURIComponent).join(',')}`),
 }

@@ -4,12 +4,14 @@ export const AUTH_TOKEN_KEY = 'auth_token'
 
 interface RequestConfig extends RequestInit {
   params?: Record<string, string>
+  responseType?: 'auto' | 'json' | 'blob' | 'arrayBuffer' | 'text'
 }
 
 interface HttpResponse<T> {
   data: T
   status: number
   ok: boolean
+  headers: Headers
 }
 
 class HttpClient {
@@ -54,7 +56,7 @@ class HttpClient {
     endpoint: string,
     config: RequestConfig = {}
   ): Promise<HttpResponse<T>> {
-    const { params, ...init } = config
+    const { params, responseType = 'auto', ...init } = config
     const url = this.buildUrl(endpoint, params)
     const hadToken = Boolean(this.getAuthToken())
     const headers = this.buildHeaders(init.headers)
@@ -70,14 +72,23 @@ class HttpClient {
         this.unauthorizedHandler?.()
       }
 
-      const contentType = response.headers.get('content-type')
+      const contentType = response.headers.get('content-type') ?? ''
       let data: T = null as T
 
-      if (contentType?.includes('application/json')) {
-        data = await response.json()
+      const shouldParseJson =
+        responseType === 'json' || (responseType === 'auto' && contentType.includes('application/json'))
+
+      if (shouldParseJson) {
+        data = (await response.json()) as T
+      } else if (responseType === 'blob') {
+        data = (await response.blob()) as T
+      } else if (responseType === 'arrayBuffer') {
+        data = (await response.arrayBuffer()) as T
+      } else if (responseType === 'text') {
+        data = (await response.text()) as T
       }
 
-      return { data, status: response.status, ok: response.ok }
+      return { data, status: response.status, ok: response.ok, headers: response.headers }
     } catch (error) {
       console.error('[HTTP_CLIENT_ERROR]:', error)
 
@@ -85,6 +96,7 @@ class HttpClient {
         data: { detail: 'Error de red o conexión rechazada' } as unknown as T,
         status: 500,
         ok: false,
+        headers: new Headers(),
       }
     }
   }
@@ -101,6 +113,19 @@ class HttpClient {
     })
   }
 
+  async postBlob(
+    endpoint: string,
+    body?: unknown,
+    config?: Omit<RequestConfig, 'responseType'>
+  ): Promise<HttpResponse<Blob>> {
+    return this.request<Blob>(endpoint, {
+      ...config,
+      method: 'POST',
+      body: JSON.stringify(body),
+      responseType: 'blob',
+    })
+  }
+
   async patch<T>(
     endpoint: string,
     body?: unknown,
@@ -109,6 +134,14 @@ class HttpClient {
     return this.request<T>(endpoint, {
       ...config,
       method: 'PATCH',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async put<T>(endpoint: string, body?: unknown, config?: RequestConfig): Promise<HttpResponse<T>> {
+    return this.request<T>(endpoint, {
+      ...config,
+      method: 'PUT',
       body: JSON.stringify(body),
     })
   }

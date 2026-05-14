@@ -1,5 +1,6 @@
 import { Play, Pause, RotateCcw, ChevronRight, Wifi, WifiOff } from 'lucide-react'
 import { useSimulationStore } from '@/store/simulationStore'
+import { simulationEndpoints } from '@/services/endpoints/simulation.endpoints'
 
 const SPEED_OPTIONS = [
   { label: 'Lento', ms: 2000 },
@@ -26,6 +27,95 @@ export const ControlPanel = () => {
   return (
     <div className="sim-control-wrapper">
       <div className="sim-control">
+        {/* Quick admin actions: rules, scenarios, execute */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+          <button
+            className="sim-btn-labeled"
+            onClick={async () => {
+              try {
+                const raw = prompt('Ingrese pesos frio,comida,seguridad separados por comas (suma debe ser 1.0)', '0.3,0.4,0.3')
+                if (!raw) return
+                const parts = raw.split(',').map((p) => Number(p.trim()))
+                if (parts.length !== 3 || parts.some(isNaN)) return alert('Formato invalido')
+                const sum = parts.reduce((a, b) => a + b, 0)
+                if (Math.abs(sum - 1.0) > 1e-6) return alert('La suma debe ser exactamente 1.0')
+
+                // usar ruleId=1 por defecto
+                const res = await simulationEndpoints.updateRuleWeights(1, { frio: parts[0], comida: parts[1], seguridad: parts[2] })
+                if (!res.ok) {
+                  if (res.status === 403) return alert('No tiene permisos para actualizar reglas')
+                  return alert('Error al actualizar pesos')
+                }
+                alert('Pesos actualizados')
+              } catch (e) {
+                alert('Error al actualizar pesos')
+              }
+            }}
+          >
+            Editar Reglas
+          </button>
+
+          <button
+            className="sim-btn-labeled"
+            onClick={async () => {
+              try {
+                const nombre = prompt('Nombre del escenario', 'Escenario A')
+                if (!nombre) return
+                const temp = Number(prompt('Temperatura (C)', '25'))
+                const lluvia = Number(prompt('Lluvia (mm)', '0'))
+                const seguridad = Number(prompt('Nivel seguridad (0-1)', '0.5'))
+                const filas = Number(prompt('Filas malla', '50'))
+                const columnas = Number(prompt('Columnas malla', '50'))
+
+                const payload = {
+                  nombre,
+                  clima: { temperatura: temp, lluvia },
+                  seguridad,
+                  malla: { filas, columnas },
+                }
+
+                const res = await simulationEndpoints.createScenario(payload)
+                if (!res.ok) {
+                  if (res.status === 403) return alert('No tiene permisos para crear escenarios')
+                  return alert('Error al crear escenario')
+                }
+                alert('Escenario creado')
+              } catch (e) {
+                alert('Error al crear escenario')
+              }
+            }}
+          >
+            Nuevo Escenario
+          </button>
+
+          <button
+            className="sim-btn-labeled"
+            onClick={async () => {
+              try {
+                const ver = Number(prompt('Version escenario id', '1'))
+                const pasos = Number(prompt('Numero de pasos', '10'))
+                if (isNaN(ver) || isNaN(pasos)) return alert('Valores invalidos')
+                const payload = { version_escenario_id: ver, generaciones: pasos, radio_suavizado:1, movilidad:0.25, permanencia_base:0.1, sensibilidad_atractivo:1 }
+                const res = await simulationEndpoints.createSimulation(payload as any)
+                if (!res.ok) {
+                  if (res.status === 403) return alert('No tiene permisos para ejecutar simulaciones')
+                  return alert('Error al ejecutar simulacion')
+                }
+                if (res.data?.simulation_id) {
+                  // set simulation id in store to track
+                  // dynamic import to avoid circular dependencies
+                  const { useSimulationStore } = await import('@/store/simulationStore')
+                  useSimulationStore.getState().setSimulationId(res.data.simulation_id as any)
+                  alert('Simulacion iniciada: ' + String(res.data.simulation_id))
+                }
+              } catch (e) {
+                alert('Error al ejecutar simulacion')
+              }
+            }}
+          >
+            Ejecutar Simulación
+          </button>
+        </div>
         {/* Transport buttons */}
         <div className="sim-transport">
           <button

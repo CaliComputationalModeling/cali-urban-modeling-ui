@@ -16,7 +16,6 @@ import type { CreateSimulationFormData } from '@/shared/types/simulation.types'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TIMER MANAGEMENT
-// Timer variable a nivel de módulo para limpieza determinista
 // ─────────────────────────────────────────────────────────────────────────────
 
 let tickTimer: ReturnType<typeof setTimeout> | null = null
@@ -33,28 +32,18 @@ function clearTick() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface SimulationStoreState {
-  // Identificadores
   simulationId: SimulationId | null
-
-  // Control de ejecución
   status: SimulationStatus
   currentGeneration: number
   maxGenerations: number
-  speed: number // intervalMs (500, 1000, 2000)
-
-  // Datos actuales (desde endpoint unificado)
+  speed: number
   geojson: GeoJsonResponse | null
   urbanState: UrbanState | null
-
-  // Histórico para gráficas
   history: HistoryPoint[]
-
-  // Indicadores de estado
   error: string | null
   retryCount: number
   backendConnected: boolean
 
-  // Acciones
   createSimulation: (config: CreateSimulationFormData) => Promise<void>
   setSimulationId: (id: SimulationId) => void
   disconnect: () => void
@@ -89,29 +78,21 @@ const INITIAL_STATE = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const useSimulationStore = create<SimulationStoreState>((set, get) => {
-  /**
-   * Programa el siguiente tick del loop de simulación
-   * Usa setTimeout recursivo para evitar acumulación de requestos
-   */
   function scheduleTick() {
     clearTick()
     tickTimer = setTimeout(async () => {
       const state = get()
 
-      // Solo ejecutar si status === 'running'
       if (state.status !== 'running') return
 
-      // Verificar si hemos alcanzado el máximo de generaciones
       if (state.currentGeneration >= state.maxGenerations) {
         clearTick()
         set({ status: 'completed' })
         return
       }
 
-      // Ejecutar paso
       await get().stepSimulation()
 
-      // Programar siguiente tick si aún estamos corriendo
       if (get().status === 'running') {
         scheduleTick()
       }
@@ -119,12 +100,10 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
   }
 
   return {
-    // ESTADO INICIAL
     ...INITIAL_STATE,
 
     // ─────────────────────────────────────────────────────────────────────────
     // ACCIÓN: Crear nueva simulación
-    // POST /api/simulations/espacial → Crea simulación con configuración
     // ─────────────────────────────────────────────────────────────────────────
 
     createSimulation: async (config: CreateSimulationFormData) => {
@@ -132,28 +111,22 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
 
       try {
         const request: CreateSimulationRequest = {
-          nombre: config.nombre,
-          descripcion: config.descripcion,
-          grid_config: {
-            filas: config.filas,
-            columnas: config.columnas,
-            boundary_mode: 'toroidal',
-            neighborhood_type: 'moore',
-            geospatial_bounds: {
-              lat_min: 3.38,
-              lat_max: 3.5,
-              lon_min: -76.56,
-              lon_max: -76.46,
-            },
-          },
-          agentes_iniciales: config.agentes_iniciales,
-          max_generaciones: 1000,
+          version_escenario_id: 1,
+          generaciones: 1,
+          radio_suavizado: 1,
+          movilidad: 0.25,
+          permanencia_base: 0.1,
+          sensibilidad_atractivo: 1.0,
         }
 
         const response = await simulationEndpoints.createSimulation(request)
 
-        if (!response.ok || !response.data) {
+        // ✅ Condiciones separadas para narrowing correcto
+        if (!response.ok) {
           throw new Error(response.data?.error || 'No se pudo crear la simulación')
+        }
+        if (!response.data) {
+          throw new Error('No se pudo crear la simulación')
         }
 
         const data: CreateSimulationResponse = response.data
@@ -239,24 +212,24 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
 
     // ─────────────────────────────────────────────────────────────────────────
     // ACCIÓN: Ejecutar 1 paso (manual o dentro del loop)
-    // POST /api/simulations/{id}/run-espacial
-    // RESPUESTA UNIFICADA: { geojson, urban_state, success, error }
     // ─────────────────────────────────────────────────────────────────────────
 
     stepSimulation: async () => {
       const { simulationId, status } = get()
 
-      // Evitar ejecuciones mientras está corriendo automáticamente
       if (!simulationId || status === 'running' || status === 'completed') return
 
       set({ error: null })
 
       try {
-        // ✨ ENDPOINT UNIFICADO: 1 request que devuelve TODO
         const response = await simulationEndpoints.runStep(simulationId, 1)
 
-        if (!response.ok || !response.data) {
+        // ✅ Condiciones separadas para narrowing correcto
+        if (!response.ok) {
           throw new Error(response.data?.error || 'Error al ejecutar paso')
+        }
+        if (!response.data) {
+          throw new Error('Error al ejecutar paso')
         }
 
         const data: RunStepResponse = response.data
@@ -265,11 +238,9 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
           throw new Error(data.error || 'Fallo en ejecución del paso')
         }
 
-        // Extraer datos de respuesta unificada
         const geojson: GeoJsonResponse = data.geojson
         const urbanState: UrbanState = data.urban_state
 
-        // Construir punto de histórico para gráfica
         const newHistoryPoint: HistoryPoint = {
           generacion: urbanState.generacion,
           total_agentes: urbanState.total_agentes,
@@ -281,7 +252,6 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
           timestamp: Date.now(),
         }
 
-        // Actualizar store
         set((state) => ({
           geojson,
           urbanState,
@@ -289,13 +259,10 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
           retryCount: 0,
           backendConnected: true,
           error: null,
-          history: [...state.history, newHistoryPoint].slice(-50), // Mantener últimos 50
-
-          // Si backend dice completada, transicionar
+          history: [...state.history, newHistoryPoint].slice(-50),
           status: urbanState.completada ? 'completed' : state.status,
         }))
 
-        // Si completada y estamos corriendo, parar loop
         if (urbanState.completada && get().status === 'completed') {
           clearTick()
         }
@@ -303,7 +270,6 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
         const message = error instanceof Error ? error.message : 'Error desconocido'
         const newRetryCount = get().retryCount + 1
 
-        // Si alcanzamos 3 reintentos, marcar como error
         if (newRetryCount >= 3) {
           clearTick()
           set({
@@ -313,7 +279,6 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
             backendConnected: false,
           })
         } else {
-          // Mostrar mensaje de reintento y dejar que loop continúe
           set({
             retryCount: newRetryCount,
             error: `Reintentando... (${newRetryCount}/3): ${message}`,
@@ -324,7 +289,6 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
 
     // ─────────────────────────────────────────────────────────────────────────
     // ACCIÓN: Resetear simulación
-    // POST /api/simulations/{id}/reset
     // ─────────────────────────────────────────────────────────────────────────
 
     resetSimulation: async () => {
@@ -361,7 +325,9 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
           set({ error: 'No se pudo resetear la simulación' })
         }
       } catch (error) {
-        set({ error: 'Error al resetear: ' + (error instanceof Error ? error.message : 'Desconocido') })
+        set({
+          error: 'Error al resetear: ' + (error instanceof Error ? error.message : 'Desconocido'),
+        })
       }
     },
 
@@ -371,7 +337,6 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
 
     setSpeed: (ms: number) => {
       set({ speed: ms })
-      // Si está corriendo, reprogramar el timer con la nueva velocidad
       if (get().status === 'running') {
         scheduleTick()
       }
@@ -386,4 +351,3 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
     },
   }
 })
-
