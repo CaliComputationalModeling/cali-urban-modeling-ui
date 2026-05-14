@@ -7,6 +7,7 @@ import http from '@/services/http'
 import type { GeoJsonResponse } from '@/shared/contracts/simulation.contract'
 import { mapsEndpoints } from '@/services/endpoints/maps.endpoints'
 import { simulationEndpoints } from '@/services/endpoints/simulation.endpoints'
+import { matrixToGeoJson } from '@/shared/lib/utils'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DENSITY COLOR SCALE - Green → Yellow → Red
@@ -103,11 +104,20 @@ export const SimulationMap = () => {
       .getSimulationSteps(simulationId)
       .then((res) => {
         if (res.ok && res.data) {
-          // Expecting an array of GeoJsonResponse-like objects
-          const parsed = Array.isArray(res.data) ? res.data : null
-          if (parsed) {
-            setSteps(parsed)
-            setSelectedStep(parsed.length > 0 ? parsed.length - 1 : null)
+          // Backend may return either an array of GeoJsonResponse objects OR an array of matrices
+          const raw = res.data
+          if (Array.isArray(raw) && raw.length > 0) {
+            // Detect if elements are matrices (array of arrays of numbers)
+            const first = raw[0]
+            if (Array.isArray(first) && Array.isArray(first[0])) {
+              // convert each matrix to GeoJsonResponse
+              const converted = (raw as number[][][]).map((m) => matrixToGeoJson(m) as GeoJsonResponse)
+              setSteps(converted)
+              setSelectedStep(converted.length > 0 ? converted.length - 1 : null)
+            } else if ((first as any).type === 'FeatureCollection' || (first as any).features) {
+              setSteps(raw as any)
+              setSelectedStep(raw.length > 0 ? raw.length - 1 : null)
+            }
           }
         }
       })

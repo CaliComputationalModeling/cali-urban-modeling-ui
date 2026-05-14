@@ -43,8 +43,11 @@ export interface SimulationStoreState {
   error: string | null
   retryCount: number
   backendConnected: boolean
+  pollingStatus: string | null
+  ejecucionId: string | null
 
   createSimulation: (config: CreateSimulationFormData) => Promise<void>
+  executeSimulationAsync: (payload: CreateSimulationRequest) => Promise<void>
   setSimulationId: (id: SimulationId) => void
   disconnect: () => void
   startSimulation: () => void
@@ -71,6 +74,8 @@ const INITIAL_STATE = {
   error: null,
   retryCount: 0,
   backendConnected: true,
+  pollingStatus: null,
+  ejecucionId: null,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -154,6 +159,129 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
         set({
           error: `Error al crear simulación: ${message}`,
           backendConnected: false,
+        })
+      }
+    },
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ACCIÓN: Ejecutar simulación de forma asíncrona (con polling)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    executeSimulationAsync: async (payload: CreateSimulationRequest) => {
+      set({ error: null, pollingStatus: 'Iniciando ejecución...', ejecucionId: null })
+
+      try {
+        // 1. POST /api/simulaciones/ejecutar
+        const response = await simulationEndpoints.createSimulation(payload)
+
+        if (!response.ok) {
+          if (response.status === 403) {
+            set({ error: 'No tiene permisos para ejecutar simulaciones', backendConnected: true })
+            return
+          }
+          if (response.status === 422 || response.status === 400) {
+            const detail = (response.data as any)?.detail || 'Validación fallida en el servidor'
+            set({ error: `Validación: ${detail}`, backendConnected: true })
+            return
+          }
+          throw new Error((response.data as any)?.detail || 'Error al ejecutar simulación')
+        }
+
+        if (!response.data) {
+          throw new Error('Respuesta vacía del servidor')
+        }
+
+        const data = response.data as any
+        const ejecucionId = data.ejecucion_id || data.id
+
+        if (!ejecucionId) {
+          // Flujo síncrono: backend devolvió simulation_id directamente
+          if (data.simulation_id) {
+            set({
+              simulationId: createSimulationId(data.simulation_id),
+              status: 'idle',
+              currentGeneration: 0,
+              geojson: null,
+              urbanState: null,
+              history: [],
+              pollingStatus: null,
+              ejecucionId: null,
+              backendConnected: true,
+            })
+          }
+          return
+        }
+
+        // Flujo asíncrono: hacer polling
+        set({ ejecucionId, pollingStatus: 'En cola esperando procesamiento...' })
+
+        let isComplete = false
+        let pollCount = 0
+        const maxPolls = 300 // 5 minutos con 1s de espera
+
+        while (!isComplete && pollCount < maxPolls) {
+          await new Promise((resolve) => setTimeout(resolve, 1000))
+          pollCount++
+
+          try {
+            const statusRes = await simulationEndpoints.getExecutionStatus(ejecucionId)
+
+            if (!statusRes.ok) {
+              throw new Error('Error consultando estado')
+            }
+
+            const statusData = statusRes.data as any
+            const estado = statusData.estado
+
+            set({ pollingStatus: `Estado: ${estado}` })
+
+            if (estado === 'finalizado') {
+              // 2. Obtener pasos
+              set({ pollingStatus: 'Descargando resultados...' })
+              const stepsRes = await simulationEndpoints.getSimulationSteps(createSimulationId(ejecucionId) as any)
+
+              if (!stepsRes.ok) {
+                throw new Error('Error descargando pasos')
+              }
+
+              const stepsData = stepsRes.data as any
+              if (!stepsData.pasos || stepsData.pasos.length === 0) {
+                throw new Error('Sin pasos en respuesta')
+              }
+
+              set({
+                simulationId: createSimulationId(ejecucionId),
+                status: 'idle',
+                currentGeneration: 0,
+                geojson: null,
+                urbanState: null,
+                history: [],
+                pollingStatus: null,
+                ejecucionId,
+                backendConnected: true,
+                error: null,
+              })
+
+              isComplete = true
+            } else if (estado === 'fallido' || estado === 'error') {
+              set({ error: `Simulación falló: ${statusData.mensaje || 'Error desconocido'}`, pollingStatus: null })
+              isComplete = true
+            }
+          } catch (pollError) {
+            const msg = pollError instanceof Error ? pollError.message : 'Error en polling'
+            set({ pollingStatus: `Reintentando... (${pollCount}/${maxPolls}): ${msg}` })
+          }
+        }
+
+        if (!isComplete) {
+          set({ error: 'Timeout esperando resultado (5 minutos)', pollingStatus: null })
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Error desconocido'
+        set({
+          error: `Error en ejecución asíncrona: ${message}`,
+          backendConnected: false,
+          pollingStatus: null,
         })
       }
     },

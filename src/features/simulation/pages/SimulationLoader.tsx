@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Database, CheckCircle2, FolderOpen, PlusCircle, X, Loader2 } from 'lucide-react'
 import { useSimulationStore } from '@/store/simulationStore'
+import { createSimulationId } from '@/shared/contracts/simulation.contract'
 
 const createSimSchema = z.object({
   nombre: z.string().min(3, 'Minimo 3 caracteres'),
@@ -45,7 +46,7 @@ export const SimulationLoader = () => {
 
   const handleConnect = () => {
     if (!inputId.trim()) return
-    setSimulationId(inputId.trim())
+    setSimulationId(createSimulationId(inputId.trim()))
   }
 
   const onCreateSubmit = async (data: CreateSimForm) => {

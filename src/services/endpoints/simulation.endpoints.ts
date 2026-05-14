@@ -5,6 +5,8 @@ import type {
   CreateSimulationResponse,
   RunStepResponse,
   ResetSimulationResponse,
+  RuleWeightsRequest,
+  CreateScenarioRequest,
 } from '@/shared/contracts/simulation.contract'
 
 /**
@@ -26,7 +28,7 @@ export const simulationEndpoints = {
    * Respuesta: CreateSimulationResponse (con simulation_id)
    */
   createSimulation: (data: CreateSimulationRequest) =>
-    http.post<CreateSimulationResponse>('/simulaciones/ejecutar', data),
+    http.post<CreateSimulationResponse>('/api/simulaciones/ejecutar', data),
 
   /**
    * Ejecutar 1 paso de simulación - ENDPOINT UNIFICADO
@@ -57,12 +59,12 @@ export const simulationEndpoints = {
 
   // Actualizar pesos de una regla de transición
   // PUT /api/reglas/{id}/pesos  body: { frio:number, comida:number, seguridad:number }
-  updateRuleWeights: (ruleId: number, weights: { frio: number; comida: number; seguridad: number }) =>
+  updateRuleWeights: (ruleId: number, weights: RuleWeightsRequest) =>
     http.put(`/api/reglas/${encodeURIComponent(String(ruleId))}/pesos`, weights),
 
   // Crear escenario
   // POST /api/escenarios/  body: { nombre, clima: { temperatura, lluvia }, seguridad, malla: { filas, columnas } }
-  createScenario: (payload: Record<string, unknown>) => http.post('/api/escenarios/', payload),
+  createScenario: (payload: CreateScenarioRequest) => http.post('/api/escenarios/', payload),
 
   // Obtener pasos/matrices de una simulación
   // GET /api/simulaciones/{id}/pasos
@@ -71,4 +73,9 @@ export const simulationEndpoints = {
   // Comparar simulaciones
   // GET /api/simulaciones/comparar?ids=id1,id2
   compareSimulations: (ids: string[]) => http.get(`/api/simulaciones/comparar?ids=${ids.map(encodeURIComponent).join(',')}`),
+
+  // Obtener estado de ejecución para polling
+  // GET /api/simulaciones/{ejecucion_id}/estado
+  getExecutionStatus: (ejecucionId: string | number) =>
+    http.get<{ estado: string; progreso?: number; mensaje?: string }>(`/api/simulaciones/${encodeURIComponent(String(ejecucionId))}/estado`),
 }

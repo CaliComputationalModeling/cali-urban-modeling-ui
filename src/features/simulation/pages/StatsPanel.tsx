@@ -2,7 +2,6 @@ import {
   Activity,
   Users,
   Database,
-  Clock,
   Utensils,
   Home,
   Zap,
@@ -272,4 +271,3 @@ export const StatsPanel = () => {
     </div>
   )
 }
-

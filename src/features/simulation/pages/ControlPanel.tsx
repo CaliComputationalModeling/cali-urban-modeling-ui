@@ -1,5 +1,8 @@
+import { useState } from 'react'
 import { Play, Pause, RotateCcw, ChevronRight, Wifi, WifiOff } from 'lucide-react'
 import { useSimulationStore } from '@/store/simulationStore'
+import { RuleEditor } from '@/features/simulation/components/RuleEditor'
+import { ExecutionModal } from '@/features/simulation/components/ExecutionModal'
 import { simulationEndpoints } from '@/services/endpoints/simulation.endpoints'
 
 const SPEED_OPTIONS = [
@@ -7,6 +10,23 @@ const SPEED_OPTIONS = [
   { label: 'Normal', ms: 1000 },
   { label: 'Rapido', ms: 500 },
 ] as const
+
+function getBackendErrorMessage(data: unknown): string {
+  if (!data || typeof data !== 'object' || !('detail' in data)) return 'Error al crear escenario'
+
+  const detail = (data as { detail: unknown }).detail
+  if (typeof detail === 'string') return detail
+  if (!Array.isArray(detail)) return JSON.stringify(detail)
+
+  return detail
+    .map((item) => {
+      if (!item || typeof item !== 'object') return String(item)
+      const error = item as { loc?: unknown[]; msg?: unknown; type?: unknown }
+      const loc = Array.isArray(error.loc) ? error.loc.join('.') : 'body'
+      return `${loc}: ${String(error.msg ?? error.type ?? 'validacion invalida')}`
+    })
+    .join(' | ')
+}
 
 export const ControlPanel = () => {
   const status = useSimulationStore((s) => s.status)
@@ -21,63 +41,62 @@ export const ControlPanel = () => {
   const setMaxGenerations = useSimulationStore((s) => s.setMaxGenerations)
   const backendConnected = useSimulationStore((s) => s.backendConnected)
   const error = useSimulationStore((s) => s.error)
+  const pollingStatus = useSimulationStore((s) => s.pollingStatus)
 
   const isRunning = status === 'running'
+
+  const [showRuleEditor, setShowRuleEditor] = useState(false)
+  const [showExecutionModal, setShowExecutionModal] = useState(false)
 
   return (
     <div className="sim-control-wrapper">
       <div className="sim-control">
         {/* Quick admin actions: rules, scenarios, execute */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-          <button
-            className="sim-btn-labeled"
-            onClick={async () => {
-              try {
-                const raw = prompt('Ingrese pesos frio,comida,seguridad separados por comas (suma debe ser 1.0)', '0.3,0.4,0.3')
-                if (!raw) return
-                const parts = raw.split(',').map((p) => Number(p.trim()))
-                if (parts.length !== 3 || parts.some(isNaN)) return alert('Formato invalido')
-                const sum = parts.reduce((a, b) => a + b, 0)
-                if (Math.abs(sum - 1.0) > 1e-6) return alert('La suma debe ser exactamente 1.0')
-
-                // usar ruleId=1 por defecto
-                const res = await simulationEndpoints.updateRuleWeights(1, { frio: parts[0], comida: parts[1], seguridad: parts[2] })
-                if (!res.ok) {
-                  if (res.status === 403) return alert('No tiene permisos para actualizar reglas')
-                  return alert('Error al actualizar pesos')
-                }
-                alert('Pesos actualizados')
-              } catch (e) {
-                alert('Error al actualizar pesos')
-              }
-            }}
-          >
+          <button className="sim-btn-labeled" onClick={() => setShowRuleEditor(true)}>
             Editar Reglas
           </button>
 
           <button
             className="sim-btn-labeled"
             onClick={async () => {
+              // Create scenario simple inline prompts kept for now
               try {
                 const nombre = prompt('Nombre del escenario', 'Escenario A')
                 if (!nombre) return
-                const temp = Number(prompt('Temperatura (C)', '25'))
-                const lluvia = Number(prompt('Lluvia (mm)', '0'))
-                const seguridad = Number(prompt('Nivel seguridad (0-1)', '0.5'))
-                const filas = Number(prompt('Filas malla', '50'))
-                const columnas = Number(prompt('Columnas malla', '50'))
+                const temperaturaPromedio = Number(prompt('Temperatura promedio (C)', '28.5'))
+                const humedadRelativa = Number(prompt('Humedad relativa (%)', '72'))
+                const precipitacionMm = Number(prompt('Precipitacion (mm)', '120'))
+                const indiceCriminalidad = Number(prompt('Indice criminalidad (0-1)', '0.65'))
+                const coberturaPolicial = Number(prompt('Cobertura policial (0-1)', '0.8'))
+                const reglaTransicionId = Number(prompt('ID regla transicion', '1'))
+                const resolucionMetros = Number(prompt('Resolucion malla (metros)', '50'))
+                const anchoCeldas = Number(prompt('Ancho en celdas', '100'))
+                const altoCeldas = Number(prompt('Alto en celdas', '100'))
 
                 const payload = {
                   nombre,
-                  clima: { temperatura: temp, lluvia },
-                  seguridad,
-                  malla: { filas, columnas },
+                  variables_clima: {
+                    temperatura_promedio: temperaturaPromedio,
+                    humedad_relativa: humedadRelativa,
+                    precipitacion_mm: precipitacionMm,
+                  },
+                  variables_seguridad: {
+                    indice_criminalidad: indiceCriminalidad,
+                    cobertura_policial: coberturaPolicial,
+                  },
+                  regla_transicion_id: reglaTransicionId,
+                  configuracion_malla: {
+                    resolucion_metros: resolucionMetros,
+                    ancho_celdas: anchoCeldas,
+                    alto_celdas: altoCeldas,
+                  },
                 }
 
                 const res = await simulationEndpoints.createScenario(payload)
                 if (!res.ok) {
                   if (res.status === 403) return alert('No tiene permisos para crear escenarios')
-                  return alert('Error al crear escenario')
+                  return alert(getBackendErrorMessage(res.data))
                 }
                 alert('Escenario creado')
               } catch (e) {
@@ -88,34 +107,21 @@ export const ControlPanel = () => {
             Nuevo Escenario
           </button>
 
-          <button
-            className="sim-btn-labeled"
-            onClick={async () => {
-              try {
-                const ver = Number(prompt('Version escenario id', '1'))
-                const pasos = Number(prompt('Numero de pasos', '10'))
-                if (isNaN(ver) || isNaN(pasos)) return alert('Valores invalidos')
-                const payload = { version_escenario_id: ver, generaciones: pasos, radio_suavizado:1, movilidad:0.25, permanencia_base:0.1, sensibilidad_atractivo:1 }
-                const res = await simulationEndpoints.createSimulation(payload as any)
-                if (!res.ok) {
-                  if (res.status === 403) return alert('No tiene permisos para ejecutar simulaciones')
-                  return alert('Error al ejecutar simulacion')
-                }
-                if (res.data?.simulation_id) {
-                  // set simulation id in store to track
-                  // dynamic import to avoid circular dependencies
-                  const { useSimulationStore } = await import('@/store/simulationStore')
-                  useSimulationStore.getState().setSimulationId(res.data.simulation_id as any)
-                  alert('Simulacion iniciada: ' + String(res.data.simulation_id))
-                }
-              } catch (e) {
-                alert('Error al ejecutar simulacion')
-              }
-            }}
-          >
+          <button className="sim-btn-labeled" onClick={() => setShowExecutionModal(true)}>
             Ejecutar Simulación
           </button>
         </div>
+
+        {showRuleEditor && <RuleEditor onClose={() => setShowRuleEditor(false)} />}
+        {showExecutionModal && <ExecutionModal onClose={() => setShowExecutionModal(false)} />}
+
+        {/* Polling status bar */}
+        {pollingStatus && (
+          <div style={{ padding: '10px', marginBottom: 8, backgroundColor: '#f0f8ff', border: '1px solid #80d4ff', borderRadius: 4, textAlign: 'center', fontSize: '14px', color: '#0066cc' }}>
+            ⏳ {pollingStatus}
+          </div>
+        )}
+
         {/* Transport buttons */}
         <div className="sim-transport">
           <button

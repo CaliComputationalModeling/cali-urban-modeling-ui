@@ -107,6 +107,42 @@ export interface CreateSimulationResponse {
 }
 
 // ============================================
+// RULE WEIGHTS REQUEST
+// ============================================
+
+export interface RuleWeightsRequest {
+  pesos: {
+    atractivo_comercial: number
+    proximidad_transporte: number
+    seguridad: number
+    densidad_actual: number
+  }
+}
+
+// ============================================
+// CREATE SCENARIO REQUEST
+// ============================================
+
+export interface CreateScenarioRequest {
+  nombre: string
+  variables_clima: {
+    temperatura_promedio: number
+    humedad_relativa: number
+    precipitacion_mm: number
+  }
+  variables_seguridad: {
+    indice_criminalidad: number
+    cobertura_policial: number
+  }
+  regla_transicion_id: number
+  configuracion_malla: {
+    resolucion_metros: number
+    ancho_celdas: number
+    alto_celdas: number
+  }
+}
+
+// ============================================
 // RESET SIMULATION REQUEST/RESPONSE
 // ============================================
 
