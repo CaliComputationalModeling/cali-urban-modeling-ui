@@ -8,7 +8,7 @@ import { useSimulationStore } from '@/store/simulationStore'
 
 export const SimulationPage = () => {
   const status = useSimulationStore((s) => s.status)
-  const stats = useSimulationStore((s) => s.stats)
+  const urbanState = useSimulationStore((s) => s.urbanState)
   const currentGeneration = useSimulationStore((s) => s.currentGeneration)
   const [showSummary, setShowSummary] = useState(false)
 
@@ -84,17 +84,17 @@ export const SimulationPage = () => {
               </div>
               <div className="sim-summary-metric">
                 <span className="sim-summary-metric-label">Total Agentes</span>
-                <span className="sim-summary-metric-value">
-                  {stats.totalAgentes.toLocaleString()}
-                </span>
+                  <span className="sim-summary-metric-value">
+                    {urbanState?.total_agentes ? urbanState.total_agentes.toLocaleString() : '—'}
+                  </span>
               </div>
               <div className="sim-summary-metric">
                 <span className="sim-summary-metric-label">Densidad Max</span>
-                <span className="sim-summary-metric-value">{stats.maxDensity}</span>
+                <span className="sim-summary-metric-value">{urbanState?.max_densidad ?? '—'}</span>
               </div>
               <div className="sim-summary-metric">
                 <span className="sim-summary-metric-label">Celdas Ocupadas</span>
-                <span className="sim-summary-metric-value">{stats.livingCells}</span>
+                <span className="sim-summary-metric-value">{urbanState?.celdas_ocupadas ?? '—'}</span>
               </div>
             </div>
 

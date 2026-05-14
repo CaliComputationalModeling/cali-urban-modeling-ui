@@ -110,11 +110,14 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
       set({ error: null })
 
       try {
+        const radio = Math.max(1, Math.floor((config.filas + config.columnas) / 50))
+        const movilidad = Math.min(1, Math.max(0, config.agentes_iniciales / 1000))
+
         const request: CreateSimulationRequest = {
           version_escenario_id: 1,
-          generaciones: 1,
-          radio_suavizado: 1,
-          movilidad: 0.25,
+          generaciones: get().maxGenerations,
+          radio_suavizado: radio,
+          movilidad,
           permanencia_base: 0.1,
           sensibilidad_atractivo: 1.0,
         }
@@ -123,7 +126,11 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
 
         // ✅ Condiciones separadas para narrowing correcto
         if (!response.ok) {
-          throw new Error(response.data?.error || 'No se pudo crear la simulación')
+          if (response.status === 403) {
+            set({ error: 'No tiene permisos para crear simulaciones', backendConnected: true })
+            return
+          }
+          throw new Error((response.data as any)?.error || 'No se pudo crear la simulación')
         }
         if (!response.data) {
           throw new Error('No se pudo crear la simulación')
@@ -226,6 +233,10 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
 
         // ✅ Condiciones separadas para narrowing correcto
         if (!response.ok) {
+          if (response.status === 403) {
+            set({ status: 'idle', error: 'No tiene permisos para ejecutar simulaciones', backendConnected: true })
+            return
+          }
           throw new Error(response.data?.error || 'Error al ejecutar paso')
         }
         if (!response.data) {

@@ -43,6 +43,16 @@ export const ExecutiveDashboardPage = () => {
 
       if (!mounted) return
 
+      // Notify if data came from cache (backend may set header 'desde_cache')
+      try {
+        const desdeCache = kRes.headers?.get('desde_cache')
+        if (desdeCache === 'true') {
+          toast('Datos desde cache (antigüedad < 60s)')
+        }
+      } catch {
+        // ignore
+      }
+
       if (!kRes.ok) toast.error(extractErrorMessage(kRes.data))
       if (!dRes.ok) toast.error(extractErrorMessage(dRes.data))
 

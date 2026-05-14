@@ -51,7 +51,6 @@ const makePOIIcon = (tipo: string) => {
 export const SimulationMap = () => {
   const geojson = useSimulationStore((s) => s.geojson)
   const currentGeneration = useSimulationStore((s) => s.currentGeneration)
-  const status = useSimulationStore((s) => s.status)
   const simulationId = useSimulationStore((s) => s.simulationId)
 
   const caliCoords: [number, number] = [3.4372, -76.5225]
@@ -101,7 +100,7 @@ export const SimulationMap = () => {
   useEffect(() => {
     if (!simulationId) return
     simulationEndpoints
-      .getSimulationSteps(String(simulationId))
+      .getSimulationSteps(simulationId)
       .then((res) => {
         if (res.ok && res.data) {
           // Expecting an array of GeoJsonResponse-like objects
@@ -139,7 +138,7 @@ export const SimulationMap = () => {
     }
   }, [geojson])
 
-  const isRunning = status === 'running'
+  
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
