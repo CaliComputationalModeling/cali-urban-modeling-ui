@@ -4,6 +4,7 @@ import { useSimulationStore } from '@/store/simulationStore'
 import { RuleEditor } from '@/features/simulation/components/RuleEditor'
 import { ExecutionModal } from '@/features/simulation/components/ExecutionModal'
 import { simulationEndpoints } from '@/services/endpoints/simulation.endpoints'
+import type { CreateScenarioResponse } from '@/shared/contracts/simulation.contract'
 
 const SPEED_OPTIONS = [
   { label: 'Lento', ms: 2000 },
@@ -28,6 +29,28 @@ function getBackendErrorMessage(data: unknown): string {
     .join(' | ')
 }
 
+function getCreatedScenarioVersionId(data: CreateScenarioResponse | null | undefined): number | null {
+  if (!data) return null
+
+  const candidates = [
+    data.version_escenario_id,
+    data.version_actual_id,
+    data.version_id,
+    data.version?.version_escenario_id,
+    data.version?.version_id,
+    data.version?.id,
+    data.data?.version_escenario_id,
+    data.data?.version_actual_id,
+    data.data?.version_id,
+    data.id,
+    data.escenario_id,
+    data.data?.id,
+    data.data?.escenario_id,
+  ]
+
+  return candidates.find((value): value is number => typeof value === 'number' && Number.isInteger(value) && value > 0) ?? null
+}
+
 export const ControlPanel = () => {
   const status = useSimulationStore((s) => s.status)
   const startSimulation = useSimulationStore((s) => s.startSimulation)
@@ -47,6 +70,7 @@ export const ControlPanel = () => {
 
   const [showRuleEditor, setShowRuleEditor] = useState(false)
   const [showExecutionModal, setShowExecutionModal] = useState(false)
+  const [lastScenarioVersionId, setLastScenarioVersionId] = useState<number>(1)
 
   return (
     <div className="sim-control-wrapper">
@@ -98,7 +122,13 @@ export const ControlPanel = () => {
                   if (res.status === 403) return alert('No tiene permisos para crear escenarios')
                   return alert(getBackendErrorMessage(res.data))
                 }
-                alert('Escenario creado')
+                const createdVersionId = getCreatedScenarioVersionId(res.data)
+                if (createdVersionId) {
+                  setLastScenarioVersionId(createdVersionId)
+                  alert(`Escenario creado. Version a ejecutar: ${createdVersionId}`)
+                } else {
+                  alert('Escenario creado, pero la respuesta no incluyo el ID de version. Revisa el ID antes de ejecutar.')
+                }
               } catch (e) {
                 alert('Error al crear escenario')
               }
@@ -113,7 +143,7 @@ export const ControlPanel = () => {
         </div>
 
         {showRuleEditor && <RuleEditor onClose={() => setShowRuleEditor(false)} />}
-        {showExecutionModal && <ExecutionModal onClose={() => setShowExecutionModal(false)} />}
+        {showExecutionModal && <ExecutionModal initialVersionId={lastScenarioVersionId} onClose={() => setShowExecutionModal(false)} />}
 
         {/* Polling status bar */}
         {pollingStatus && (

@@ -7,6 +7,7 @@ import type {
   ResetSimulationResponse,
   RuleWeightsRequest,
   CreateScenarioRequest,
+  CreateScenarioResponse,
 } from '@/shared/contracts/simulation.contract'
 
 /**
@@ -64,7 +65,7 @@ export const simulationEndpoints = {
 
   // Crear escenario
   // POST /api/escenarios/  body: { nombre, clima: { temperatura, lluvia }, seguridad, malla: { filas, columnas } }
-  createScenario: (payload: CreateScenarioRequest) => http.post('/api/escenarios/', payload),
+  createScenario: (payload: CreateScenarioRequest) => http.post<CreateScenarioResponse>('/api/escenarios/', payload),
 
   // Obtener pasos/matrices de una simulación
   // GET /api/simulaciones/{id}/pasos
@@ -78,4 +79,30 @@ export const simulationEndpoints = {
   // GET /api/simulaciones/{ejecucion_id}/estado
   getExecutionStatus: (ejecucionId: string | number) =>
     http.get<{ estado: string; progreso?: number; mensaje?: string }>(`/api/simulaciones/${encodeURIComponent(String(ejecucionId))}/estado`),
+
+  /**
+   * 🔧 ENDPOINT DE DEBUGGING
+   * GET /api/health/simulaciones
+   *
+   * Retorna información de salud del backend:
+   * {
+   *   backend_version: "1.0.0",
+   *   database_connected: true,
+   *   cache_size: 5,
+   *   ultimo_ejecucion_id: "sim_20260518_abc123"
+   * }
+   */
+  debugBackendStatus: () =>
+    http.get<{
+      backend_version?: string
+      database_connected?: boolean
+      cache_size?: number
+      ultimo_ejecucion_id?: string
+      error?: string
+    }>('/api/health/simulaciones').catch(() => ({
+      data: { error: 'Backend no accesible', backend_version: 'unknown' },
+      status: 500,
+      ok: false,
+      headers: new Headers(),
+    })),
 }

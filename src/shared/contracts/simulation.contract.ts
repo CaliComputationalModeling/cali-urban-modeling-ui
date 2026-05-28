@@ -100,10 +100,42 @@ export interface CreateSimulationRequest {
 }
 
 export interface CreateSimulationResponse {
-  simulation_id: SimulationId
-  nombre: string
-  generacion: number
-  creada_en: string
+  // ============================================
+  // FLUJO ASÍNCRONO (prioritario - para simulaciones largas)
+  // ============================================
+  ejecucion_id?: string | number
+  execution_id?: string | number // Variante en inglés
+
+  // ============================================
+  // FLUJO SÍNCRONO (fallback - para resultados inmediatos)
+  // ============================================
+  simulation_id?: string | number
+  simulacion_id?: string | number // Variante en español
+
+  // ============================================
+  // METADATOS DE ESTADO
+  // ============================================
+  estado?: string
+  status?: string // Variante en inglés
+  estado_ejecucion?: string
+
+  // ============================================
+  // CAMPOS INFORMATIVOS COMUNES
+  // ============================================
+  nombre?: string
+  name?: string
+  generacion?: number
+  generation?: number
+  creada_en?: string
+  created_at?: string
+
+  // ============================================
+  // MENSAJES Y PROGRESO
+  // ============================================
+  mensaje?: string
+  message?: string
+  progreso?: number
+  progress?: number
 }
 
 // ============================================
@@ -139,6 +171,26 @@ export interface CreateScenarioRequest {
     resolucion_metros: number
     ancho_celdas: number
     alto_celdas: number
+  }
+}
+
+export interface CreateScenarioResponse {
+  id?: number
+  escenario_id?: number
+  version_id?: number
+  version_escenario_id?: number
+  version_actual_id?: number
+  version?: {
+    id?: number
+    version_id?: number
+    version_escenario_id?: number
+  }
+  data?: {
+    id?: number
+    escenario_id?: number
+    version_id?: number
+    version_escenario_id?: number
+    version_actual_id?: number
   }
 }
 

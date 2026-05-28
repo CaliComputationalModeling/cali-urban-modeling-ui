@@ -77,10 +77,24 @@ export interface SimulationStatistics {
   estado: string
 }
 
+/**
+ * Datos del formulario de creación de simulación
+ * Estos datos se mapean a los parámetros que espera el backend
+ */
 export interface CreateSimulationFormData {
-  nombre: string
+  // ────────────────────────────────────────────────
+  // PARÁMETROS DIRECTOS AL BACKEND
+  // ────────────────────────────────────────────────
+  version_escenario_id: number
+  generaciones: number
+  radio_suavizado: number
+  movilidad: number
+  permanencia_base: number
+  sensibilidad_atractivo: number
+
+  // ────────────────────────────────────────────────
+  // METADATOS (opcionales - solo para UI)
+  // ────────────────────────────────────────────────
+  nombre?: string
   descripcion?: string
-  filas: number
-  columnas: number
-  agentes_iniciales: number
 }

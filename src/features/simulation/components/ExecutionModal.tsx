@@ -4,10 +4,11 @@ import type { CreateSimulationRequest } from '@/shared/contracts/simulation.cont
 
 interface Props {
   onClose: () => void
+  initialVersionId?: number
 }
 
-export const ExecutionModal = ({ onClose }: Props) => {
-  const [versionId, setVersionId] = useState<number>(1)
+export const ExecutionModal = ({ onClose, initialVersionId = 1 }: Props) => {
+  const [versionId, setVersionId] = useState<number>(initialVersionId)
   const [nPasos, setNPasos] = useState<number>(20)
   const executeSimulationAsync = useSimulationStore((s) => s.executeSimulationAsync)
   const pollingStatus = useSimulationStore((s) => s.pollingStatus)
