@@ -3,11 +3,14 @@ import { http } from '../http'
 export type ReportTemplateType = 'TRIMESTRAL' | 'GEOGRAFICO'
 export type ReportFormat = 'PDF' | 'EXCEL'
 
+// 13. Body actualizado para POST /api/reportes/generar
 export interface GenerateReportRequest {
-  plantilla: ReportTemplateType
-  fecha_inicio: string // YYYY-MM-DD
-  fecha_fin: string // YYYY-MM-DD
+  tipo_plantilla: ReportTemplateType
+  fecha_inicio: string     // YYYY-MM-DD
+  fecha_fin: string        // YYYY-MM-DD
   formato: ReportFormat
+  componentes?: string[]   // e.g. ["kpis", "mapa", "rutas"]
+  ejecucion_ids?: string[] // IDs de simulaciones a incluir
 }
 
 export interface ReportHistoryItem {
@@ -22,9 +25,11 @@ export interface ReportHistoryItem {
 }
 
 export const reportsEndpoints = {
-  generate: (payload: GenerateReportRequest) => http.postBlob('/api/reportes/generar', payload),
+  // 13. Generar reporte (PDF o Excel)
+  // POST /api/reportes/generar
+  generate: (payload: GenerateReportRequest) =>
+    http.postBlob('/api/reportes/generar', payload),
 
-  // si el backend no existe aún, la UI manejará el error y mostrará vacío
-  history: () => http.get<ReportHistoryItem[]>('/api/reportes/historial'),
+  history: () =>
+    http.get<ReportHistoryItem[]>('/api/reportes/historial'),
 }
-

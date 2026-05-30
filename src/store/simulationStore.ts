@@ -9,18 +9,18 @@ import {
   createSimulationId,
   SPEED_OPTIONS,
   type CreateSimulationRequest,
-  type CreateSimulationResponse,
-  type RunStepResponse,
 } from '@/shared/contracts/simulation.contract'
 import type { CreateSimulationFormData } from '@/shared/types/simulation.types'
+import type {
+  EjecucionSimulacionResponse,
+  PasoSimulacionDTO,
+} from '@/services/endpoints/simulation.endpoints'
 
 function formatBackendDetail(data: unknown, fallback: string): string {
   if (!data || typeof data !== 'object' || !('detail' in data)) return fallback
-
   const detail = (data as { detail: unknown }).detail
   if (typeof detail === 'string') return detail
   if (!Array.isArray(detail)) return JSON.stringify(detail)
-
   return detail
     .map((item) => {
       if (!item || typeof item !== 'object') return String(item)
@@ -31,25 +31,58 @@ function formatBackendDetail(data: unknown, fallback: string): string {
     .join(' | ')
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TIMER MANAGEMENT
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Convierte PasoSimulacionDTO → GeoJsonResponse ────────────────────────────
+const LAT_MIN = 3.3, LAT_MAX = 3.55, LON_MIN = -76.6, LON_MAX = -76.45
 
-let tickTimer: ReturnType<typeof setTimeout> | null = null
+function pasoToGeoJson(paso: PasoSimulacionDTO): GeoJsonResponse {
+  const rows = paso.densidad.length
+  const cols = rows > 0 ? paso.densidad[0].length : 0
+  const features = []
+  let maxDensidad = 0
 
-function clearTick() {
-  if (tickTimer !== null) {
-    clearTimeout(tickTimer)
-    tickTimer = null
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      const densidad = paso.densidad[i][j] ?? 0
+      if (densidad <= 0) continue
+      if (densidad > maxDensidad) maxDensidad = densidad
+      const lat = LAT_MIN + (i / rows) * (LAT_MAX - LAT_MIN)
+      const lon = LON_MIN + (j / cols) * (LON_MAX - LON_MIN)
+      features.push({
+        type: 'Feature' as const,
+        properties: { x: j, y: i, agentes: Math.round(densidad * 100), densidad, en_transito: 0, en_comedor: 0, en_cambuche: 0, zona_consumo: 0, zona_repulsora: 0 },
+        geometry: { type: 'Point' as const, coordinates: [lon, lat] as [number, number] },
+      })
+    }
+  }
+
+  return {
+    type: 'FeatureCollection',
+    features,
+    metadata: { generacion: paso.tiempo, timestamp: new Date().toISOString(), total_agentes: paso.total_poblacion, max_densidad: maxDensidad },
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// STORE STATE
-// ─────────────────────────────────────────────────────────────────────────────
+function pasoToUrbanState(paso: PasoSimulacionDTO, isLast: boolean): UrbanState {
+  const rows = paso.densidad.length
+  const cols = rows > 0 ? paso.densidad[0].length : 0
+  let celdas_ocupadas = 0, max_densidad = 0
+  for (let i = 0; i < rows; i++)
+    for (let j = 0; j < cols; j++) {
+      const d = paso.densidad[i]?.[j] ?? 0
+      if (d > 0) celdas_ocupadas++
+      if (d > max_densidad) max_densidad = d
+    }
+  return { generacion: paso.tiempo, total_agentes: paso.total_poblacion, max_densidad, celdas_ocupadas, en_transito: 0, en_comedor: 0, en_cambuche: 0, zona_consumo: 0, zona_repulsora: 0, completada: isLast }
+}
 
+// ─── Timer ────────────────────────────────────────────────────────────────────
+let tickTimer: ReturnType<typeof setTimeout> | null = null
+function clearTick() { if (tickTimer !== null) { clearTimeout(tickTimer); tickTimer = null } }
+
+// ─── Store types ──────────────────────────────────────────────────────────────
 export interface SimulationStoreState {
   simulationId: SimulationId | null
+  ejecucionId: string | null
   status: SimulationStatus
   currentGeneration: number
   maxGenerations: number
@@ -61,7 +94,7 @@ export interface SimulationStoreState {
   retryCount: number
   backendConnected: boolean
   pollingStatus: string | null
-  ejecucionId: string | null
+  loadedPasos: PasoSimulacionDTO[]   // ← pasos cargados del backend
 
   createSimulation: (config: CreateSimulationFormData) => Promise<void>
   executeSimulationAsync: (payload: CreateSimulationRequest) => Promise<void>
@@ -75,12 +108,9 @@ export interface SimulationStoreState {
   setMaxGenerations: (max: number) => void
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// INITIAL STATE
-// ─────────────────────────────────────────────────────────────────────────────
-
 const INITIAL_STATE = {
   simulationId: null,
+  ejecucionId: null,
   status: 'idle' as SimulationStatus,
   currentGeneration: 0,
   maxGenerations: 100,
@@ -92,91 +122,65 @@ const INITIAL_STATE = {
   retryCount: 0,
   backendConnected: true,
   pollingStatus: null,
-  ejecucionId: null,
+  loadedPasos: [],
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ZUSTAND STORE
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Índice del paso actual (fuera del store para evitar re-renders) ───────────
+let currentPasoIndex = 0
+
+// ─── Helper: carga pasos y los guarda en el store ─────────────────────────────
+async function loadPasosIntoStore(
+  ejecucionId: string,
+  set: (partial: Partial<SimulationStoreState>) => void
+) {
+  const res = await simulationEndpoints.getSimulationSteps(ejecucionId as SimulationId)
+  if (res.ok && Array.isArray(res.data) && res.data.length > 0) {
+    currentPasoIndex = 0
+    set({ loadedPasos: res.data as PasoSimulacionDTO[], maxGenerations: (res.data as PasoSimulacionDTO[]).length })
+  }
+}
 
 export const useSimulationStore = create<SimulationStoreState>((set, get) => {
   function scheduleTick() {
     clearTick()
     tickTimer = setTimeout(async () => {
       const state = get()
-
       if (state.status !== 'running') return
-
-      if (state.currentGeneration >= state.maxGenerations) {
-        clearTick()
-        set({ status: 'completed' })
-        return
-      }
-
       await get().stepSimulation()
-
-      if (get().status === 'running') {
-        scheduleTick()
-      }
+      if (get().status === 'running') scheduleTick()
     }, get().speed)
   }
 
   return {
     ...INITIAL_STATE,
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // ACCIÓN: Crear nueva simulación
-    // ─────────────────────────────────────────────────────────────────────────
-
+    // ── createSimulation: ejecuta y carga pasos ────────────────────────────────
     createSimulation: async (config: CreateSimulationFormData) => {
-      set({ error: null })
-
+      set({ error: null, pollingStatus: 'Ejecutando simulación...' })
       try {
-        // ✅ Mapear directamente los parámetros del formulario al request del backend
-        // Los valores ya vienen validados por Zod desde el formulario
-        const request: CreateSimulationRequest = {
+        const res = await simulationEndpoints.createSimulation({
           version_escenario_id: config.version_escenario_id,
           generaciones: config.generaciones,
           radio_suavizado: config.radio_suavizado,
           movilidad: config.movilidad,
           permanencia_base: config.permanencia_base,
           sensibilidad_atractivo: config.sensibilidad_atractivo,
+        })
+
+        if (!res.ok) {
+          set({ error: res.status === 403 ? 'Sin permisos' : formatBackendDetail(res.data, 'Error al crear simulación'), pollingStatus: null, backendConnected: true })
+          return
         }
+        if (!res.data) { set({ error: 'Respuesta vacía', pollingStatus: null }); return }
 
-        console.log('[createSimulation] Enviando payload:', request)
-
-        const response = await simulationEndpoints.createSimulation(request)
-
-        // ✅ Condiciones separadas para narrowing correcto
-        if (!response.ok) {
-          if (response.status === 403) {
-            set({ error: 'No tiene permisos para crear simulaciones', backendConnected: true })
-            return
-          }
-          if (response.status === 400 || response.status === 422) {
-            const detail = formatBackendDetail(response.data, 'Error de validación')
-            console.error('[createSimulation] Error 400/422:', detail, response.data)
-            set({ error: `Error de validación: ${detail}`, backendConnected: true })
-            return
-          }
-          throw new Error((response.data as any)?.error || 'No se pudo crear la simulación')
-        }
-        if (!response.data) {
-          throw new Error('No se pudo crear la simulación')
-        }
-
-        const data: CreateSimulationResponse = response.data
-        const simId = data.simulation_id || data.simulacion_id
-
-        if (!simId) {
-          console.error('[createSimulation] Respuesta sin ID:', data)
-          throw new Error('Backend no retornó simulation_id ni simulacion_id')
-        }
-
-        console.log('[createSimulation] Simulación creada exitosamente:', simId)
+        const ejecucion = res.data as EjecucionSimulacionResponse
+        currentPasoIndex = 0
 
         set({
-          simulationId: createSimulationId(String(simId)),
+          simulationId: createSimulationId(String(ejecucion.id)),
+          ejecucionId: String(ejecucion.id),
+          loadedPasos: ejecucion.pasos,
+          maxGenerations: ejecucion.pasos.length,
           status: 'idle',
           currentGeneration: 0,
           geojson: null,
@@ -185,448 +189,121 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
           error: null,
           retryCount: 0,
           backendConnected: true,
-        })
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Error desconocido'
-        console.error('[createSimulation] Error:', message, error)
-        set({
-          error: `Error al crear simulación: ${message}`,
-          backendConnected: false,
-        })
-      }
-    },
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // ACCIÓN: Ejecutar simulación de forma asíncrona (con polling)
-    // ─────────────────────────────────────────────────────────────────────────
-
-    executeSimulationAsync: async (payload: CreateSimulationRequest) => {
-      set({ error: null, pollingStatus: 'Iniciando ejecución...', ejecucionId: null })
-
-      try {
-        // 1. POST /api/simulaciones/ejecutar
-        const response = await simulationEndpoints.createSimulation(payload)
-
-        if (!response.ok) {
-          if (response.status === 403) {
-            set({ error: 'No tiene permisos para ejecutar simulaciones', backendConnected: true })
-            return
-          }
-          if (response.status === 422 || response.status === 400) {
-            const detail = formatBackendDetail(response.data, 'Validación fallida en el servidor')
-            set({ error: `Validación: ${detail}`, backendConnected: true })
-            return
-          }
-          throw new Error(formatBackendDetail(response.data, 'Error al ejecutar simulación'))
-        }
-
-        if (!response.data) {
-          throw new Error('Respuesta vacía del servidor')
-        }
-
-        const data = response.data as any
-
-        // 🔧 MEJORA 1: Búsqueda más exhaustiva de identificador asíncrono
-        const ejecucionId = data.ejecucion_id || data.id || data.execution_id || null
-        const simulationId = data.simulation_id || data.simulacion_id || null
-
-        // 🔧 MEJORA 2: Logging para debugging
-        console.log('[executeSimulationAsync] Respuesta POST:', {
-          raw: data,
-          ejecucionId,
-          simulationId,
-          hasAsyncFlow: !!ejecucionId,
-          timestamp: new Date().toISOString(),
-        })
-
-        // ─────────────────────────────────────────────────────────────────────────
-        // FLUJO ASÍNCRONO (prioritario)
-        // ─────────────────────────────────────────────────────────────────────────
-        if (ejecucionId) {
-          set({
-            ejecucionId,
-            pollingStatus: 'En cola esperando procesamiento...',
-          })
-
-          let isComplete = false
-          let pollCount = 0
-          const maxPolls = 300 // 5 minutos con 1s de espera
-
-          while (!isComplete && pollCount < maxPolls) {
-            await new Promise((resolve) => setTimeout(resolve, 1000))
-            pollCount++
-
-            try {
-              const statusRes = await simulationEndpoints.getExecutionStatus(ejecucionId)
-
-              // 🔧 MEJORA 4: Logging detallado del polling
-              console.log(`[Polling ${pollCount}/${maxPolls}]`, {
-                ejecucionId,
-                statusCode: statusRes.status,
-                statusOk: statusRes.ok,
-                data: statusRes.data,
-                timestamp: new Date().toISOString(),
-              })
-
-              if (!statusRes.ok) {
-                // 🔧 MEJORA 5: Manejo de 404 específico
-                if (statusRes.status === 404) {
-                  // Backend puede no haber retornado ejecucion_id correcto
-                  // Intentar fallback a simulation_id
-                  if (simulationId) {
-                    console.warn('[getExecutionStatus] 404 con ejecucionId, intentando fallback a simulationId', {
-                      ejecucionId,
-                      simulationId,
-                    })
-                    set({
-                      simulationId: createSimulationId(simulationId),
-                      status: 'idle',
-                      currentGeneration: 0,
-                      geojson: null,
-                      urbanState: null,
-                      history: [],
-                      pollingStatus: null,
-                      ejecucionId: null,
-                      backendConnected: true,
-                      error: null,
-                    })
-                    isComplete = true
-                    break
-                  }
-                  throw new Error('Ejecución no encontrada (404) - backend puede tener problema de persistencia')
-                }
-                throw new Error(`Error HTTP ${statusRes.status} consultando estado`)
-              }
-
-              const statusData = statusRes.data as any
-              const estado = statusData.estado || statusData.status
-
-              // 🔧 MEJORA 6: Estados más granulares y normalizados
-              const estadoNormalizado = (estado || '').toLowerCase()
-              const mensajeProgreso = statusData.mensaje || statusData.message || `Progreso: ${statusData.progreso || 0}%`
-
-              set({ pollingStatus: `Estado: ${estado} - ${mensajeProgreso}` })
-
-              if (estadoNormalizado === 'finalizado' || estadoNormalizado === 'completed') {
-                // 2. Obtener pasos
-                set({ pollingStatus: 'Descargando resultados...' })
-                const stepsRes = await simulationEndpoints.getSimulationSteps(createSimulationId(ejecucionId) as any)
-
-                if (!stepsRes.ok) {
-                  throw new Error(`Error descargando pasos (${stepsRes.status})`)
-                }
-
-                const stepsData = stepsRes.data as any
-                if (!stepsData.pasos || stepsData.pasos.length === 0) {
-                  throw new Error('Sin pasos en respuesta')
-                }
-
-                set({
-                  simulationId: createSimulationId(ejecucionId),
-                  status: 'idle',
-                  currentGeneration: 0,
-                  geojson: null,
-                  urbanState: null,
-                  history: [],
-                  pollingStatus: null,
-                  ejecucionId,
-                  backendConnected: true,
-                  error: null,
-                })
-
-                isComplete = true
-              } else if (
-                estadoNormalizado === 'fallido' ||
-                estadoNormalizado === 'error' ||
-                estadoNormalizado === 'failed'
-              ) {
-                const mensajeError = statusData.mensaje || statusData.message || 'Error desconocido'
-                set({
-                  error: `Simulación falló: ${mensajeError}`,
-                  pollingStatus: null,
-                })
-                isComplete = true
-              }
-              // Estados pendiente/en_proceso: continuar polling
-            } catch (pollError) {
-              const msg = pollError instanceof Error ? pollError.message : 'Error en polling'
-
-              // 🔧 MEJORA 7: Reintentos más inteligentes
-              console.error(`[Polling Error ${pollCount}/${maxPolls}]`, {
-                error: msg,
-                ejecucionId,
-                timestamp: new Date().toISOString(),
-              })
-
-              set({
-                pollingStatus: `Reintentando... (${pollCount}/${maxPolls}): ${msg}`,
-              })
-
-              // Si es 404 persistente, abortar antes de maxPolls
-              if (msg.includes('404')) {
-                set({
-                  error: 'Simulación no encontrada en backend (persistencia in-memory?)',
-                  pollingStatus: null,
-                })
-                isComplete = true
-              }
-            }
-          }
-
-          if (!isComplete) {
-            set({
-              error: 'Timeout esperando resultado (5 minutos). Backend puede estar caído.',
-              pollingStatus: null,
-            })
-          }
-          return // ← IMPORTANTE: Exit aquí después del flujo asíncrono
-        }
-
-        // ─────────────────────────────────────────────────────────────────────────
-        // FLUJO SÍNCRONO (fallback)
-        // ─────────────────────────────────────────────────────────────────────────
-        if (simulationId) {
-          console.log('[executeSimulationAsync] Usando flujo síncrono (resultado inmediato)')
-          set({
-            simulationId: createSimulationId(simulationId),
-            status: 'idle',
-            currentGeneration: 0,
-            geojson: null,
-            urbanState: null,
-            history: [],
-            pollingStatus: null,
-            ejecucionId: null,
-            backendConnected: true,
-            error: null,
-          })
-          return
-        }
-
-        // ─────────────────────────────────────────────────────────────────────────
-        // 🔧 MEJORA 8: Error explícito si no hay identificador
-        // ─────────────────────────────────────────────────────────────────────────
-        throw new Error(
-          'Backend no retornó ejecucion_id ni simulation_id. ' +
-            'Verificar contrato API: respuesta debe incluir "ejecucion_id" para flujo asíncrono ' +
-            'o "simulation_id" para flujo síncrono'
-        )
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Error desconocido'
-
-        // 🔧 MEJORA 9: Logging de errors para análisis post-mortem
-        console.error('[executeSimulationAsync] Error fatal:', {
-          message,
-          error: error instanceof Error ? error.stack : error,
-          payload,
-          timestamp: new Date().toISOString(),
-        })
-
-        set({
-          error: `Error en ejecución asíncrona: ${message}`,
-          backendConnected: false,
           pollingStatus: null,
         })
+      } catch (err) {
+        set({ error: `Error: ${err instanceof Error ? err.message : 'Desconocido'}`, pollingStatus: null, backendConnected: false })
       }
     },
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // ACCIÓN: Conectar a simulación existente
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── executeSimulationAsync: mismo flujo, usado por ExecutionModal ──────────
+    executeSimulationAsync: async (payload: CreateSimulationRequest) => {
+      set({ error: null, pollingStatus: 'Ejecutando simulación...', ejecucionId: null })
+      try {
+        const res = await simulationEndpoints.createSimulation(payload)
 
-    setSimulationId: (id: SimulationId) => {
-      set({
-        simulationId: id,
-        status: 'idle',
-        currentGeneration: 0,
-        geojson: null,
-        urbanState: null,
-        history: [],
-        error: null,
-        retryCount: 0,
-        backendConnected: true,
-      })
+        if (!res.ok) {
+          if (res.status === 403) { set({ error: 'Sin permisos', pollingStatus: null, backendConnected: true }); return }
+          if (res.status === 422 || res.status === 400) { set({ error: formatBackendDetail(res.data, 'Error de validación'), pollingStatus: null, backendConnected: true }); return }
+          throw new Error(formatBackendDetail(res.data, 'Error al ejecutar simulación'))
+        }
+        if (!res.data) throw new Error('Respuesta vacía del servidor')
+
+        const ejecucion = res.data as EjecucionSimulacionResponse
+        currentPasoIndex = 0
+
+        set({
+          simulationId: createSimulationId(String(ejecucion.id)),
+          ejecucionId: String(ejecucion.id),
+          loadedPasos: ejecucion.pasos,
+          maxGenerations: ejecucion.pasos.length,
+          status: 'idle',
+          currentGeneration: 0,
+          geojson: null,
+          urbanState: null,
+          history: [],
+          error: null,
+          retryCount: 0,
+          backendConnected: true,
+          pollingStatus: null,
+        })
+      } catch (err) {
+        set({ error: `Error: ${err instanceof Error ? err.message : 'Desconocido'}`, pollingStatus: null, backendConnected: false })
+      }
     },
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // ACCIÓN: Desconectar simulación
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── setSimulationId: conectar a ejecución existente y cargar sus pasos ─────
+    setSimulationId: (id: SimulationId) => {
+      currentPasoIndex = 0
+      set({ simulationId: id, ejecucionId: String(id), status: 'idle', currentGeneration: 0, geojson: null, urbanState: null, history: [], loadedPasos: [], error: null, retryCount: 0, backendConnected: true })
+      loadPasosIntoStore(String(id), set).catch(() => null)
+    },
 
     disconnect: () => {
       clearTick()
-      set({
-        simulationId: null,
-        status: 'idle',
-        currentGeneration: 0,
-        geojson: null,
-        urbanState: null,
-        history: [],
-        error: null,
-        retryCount: 0,
-      })
+      currentPasoIndex = 0
+      set({ ...INITIAL_STATE })
     },
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // ACCIÓN: Iniciar simulación
-    // ─────────────────────────────────────────────────────────────────────────
-
     startSimulation: () => {
-      const { simulationId, status } = get()
+      const { simulationId, status, loadedPasos } = get()
       if (!simulationId || status === 'running') return
-
+      if (loadedPasos.length === 0) { set({ error: 'No hay pasos cargados. Ejecuta una simulación primero.' }); return }
       set({ status: 'running', error: null, retryCount: 0, backendConnected: true })
       scheduleTick()
     },
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // ACCIÓN: Pausar simulación
-    // ─────────────────────────────────────────────────────────────────────────
-
     pauseSimulation: () => {
       clearTick()
-      if (get().status === 'running') {
-        set({ status: 'paused' })
-      }
+      if (get().status === 'running') set({ status: 'paused' })
     },
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // ACCIÓN: Ejecutar 1 paso (manual o dentro del loop)
-    // ─────────────────────────────────────────────────────────────────────────
-
+    // ── stepSimulation: avanza 1 paso en loadedPasos ──────────────────────────
     stepSimulation: async () => {
-      const { simulationId, status } = get()
+      const { loadedPasos, status } = get()
+      if (status === 'completed') return
 
-      if (!simulationId || status === 'running' || status === 'completed') return
+      if (loadedPasos.length === 0) { set({ error: 'Sin pasos disponibles.' }); return }
+      if (currentPasoIndex >= loadedPasos.length) { set({ status: 'completed' }); clearTick(); return }
 
-      set({ error: null })
+      const paso = loadedPasos[currentPasoIndex]
+      const isLast = currentPasoIndex === loadedPasos.length - 1
+      const geojson = pasoToGeoJson(paso)
+      const urbanState = pasoToUrbanState(paso, isLast)
 
-      try {
-        const response = await simulationEndpoints.runStep(simulationId, 1)
-
-        // ✅ Condiciones separadas para narrowing correcto
-        if (!response.ok) {
-          if (response.status === 403) {
-            set({ status: 'idle', error: 'No tiene permisos para ejecutar simulaciones', backendConnected: true })
-            return
-          }
-          throw new Error(response.data?.error || 'Error al ejecutar paso')
-        }
-        if (!response.data) {
-          throw new Error('Error al ejecutar paso')
-        }
-
-        const data: RunStepResponse = response.data
-
-        if (!data.success) {
-          throw new Error(data.error || 'Fallo en ejecución del paso')
-        }
-
-        const geojson: GeoJsonResponse = data.geojson
-        const urbanState: UrbanState = data.urban_state
-
-        const newHistoryPoint: HistoryPoint = {
-          generacion: urbanState.generacion,
-          total_agentes: urbanState.total_agentes,
-          en_transito: urbanState.en_transito,
-          en_comedor: urbanState.en_comedor,
-          en_cambuche: urbanState.en_cambuche,
-          zona_consumo: urbanState.zona_consumo,
-          zona_repulsora: urbanState.zona_repulsora,
-          timestamp: Date.now(),
-        }
-
-        set((state) => ({
-          geojson,
-          urbanState,
-          currentGeneration: urbanState.generacion,
-          retryCount: 0,
-          backendConnected: true,
-          error: null,
-          history: [...state.history, newHistoryPoint].slice(-50),
-          status: urbanState.completada ? 'completed' : state.status,
-        }))
-
-        if (urbanState.completada && get().status === 'completed') {
-          clearTick()
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Error desconocido'
-        const newRetryCount = get().retryCount + 1
-
-        if (newRetryCount >= 3) {
-          clearTick()
-          set({
-            status: 'error',
-            error: `Error de conexión tras ${newRetryCount} reintentos. Simulación pausada.`,
-            retryCount: newRetryCount,
-            backendConnected: false,
-          })
-        } else {
-          set({
-            retryCount: newRetryCount,
-            error: `Reintentando... (${newRetryCount}/3): ${message}`,
-          })
-        }
+      const newPoint: HistoryPoint = {
+        generacion: paso.tiempo,
+        total_agentes: paso.total_poblacion,
+        en_transito: 0, en_comedor: 0, en_cambuche: 0, zona_consumo: 0, zona_repulsora: 0,
+        timestamp: Date.now(),
       }
-    },
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // ACCIÓN: Resetear simulación
-    // ─────────────────────────────────────────────────────────────────────────
+      currentPasoIndex++
+
+      set((state) => ({
+        geojson,
+        urbanState,
+        currentGeneration: paso.tiempo,
+        history: [...state.history, newPoint].slice(-50),
+        status: isLast ? 'completed' : state.status,
+        retryCount: 0,
+        backendConnected: true,
+        error: null,
+      }))
+
+      if (isLast) clearTick()
+    },
 
     resetSimulation: async () => {
       clearTick()
-      const { simulationId } = get()
-
-      if (!simulationId) {
-        set({
-          status: 'idle',
-          currentGeneration: 0,
-          geojson: null,
-          urbanState: null,
-          history: [],
-          error: null,
-        })
-        return
-      }
-
-      try {
-        const response = await simulationEndpoints.resetSimulation(simulationId)
-
-        if (response.ok) {
-          set({
-            status: 'idle',
-            currentGeneration: 0,
-            geojson: null,
-            urbanState: null,
-            history: [],
-            error: null,
-            retryCount: 0,
-            backendConnected: true,
-          })
-        } else {
-          set({ error: 'No se pudo resetear la simulación' })
-        }
-      } catch (error) {
-        set({
-          error: 'Error al resetear: ' + (error instanceof Error ? error.message : 'Desconocido'),
-        })
-      }
+      currentPasoIndex = 0
+      set({ status: 'idle', currentGeneration: 0, geojson: null, urbanState: null, history: [], error: null, retryCount: 0 })
     },
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // ACCIÓN: Cambiar velocidad
-    // ─────────────────────────────────────────────────────────────────────────
 
     setSpeed: (ms: number) => {
       set({ speed: ms })
-      if (get().status === 'running') {
-        scheduleTick()
-      }
+      if (get().status === 'running') scheduleTick()
     },
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // ACCIÓN: Establecer máximo de generaciones
-    // ─────────────────────────────────────────────────────────────────────────
 
     setMaxGenerations: (max: number) => {
       set({ maxGenerations: Math.max(1, max) })

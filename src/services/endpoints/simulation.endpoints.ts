@@ -1,108 +1,156 @@
 import { http } from '../http'
-import type {
-  SimulationId,
-  CreateSimulationRequest,
-  CreateSimulationResponse,
-  RunStepResponse,
-  ResetSimulationResponse,
-  RuleWeightsRequest,
-  CreateScenarioRequest,
-  CreateScenarioResponse,
-} from '@/shared/contracts/simulation.contract'
+import type { SimulationId } from '@/shared/contracts/simulation.contract'
 
-/**
- * ENDPOINTS DE SIMULACIÓN - REFACTORIZADO PARA CONTRATO UNIFICADO
- *
- * Principios:
- * - 1 request por tick: runStep devuelve geojson + urban_state juntos
- * - Tipado fuerte con contratos
- * - IDs siempre como string (SimulationId)
- * - Sin any
- */
+// ─── Tipos alineados con el backend (escenario_router.py) ─────────────────────
+
+export interface CreateRuleRequest {
+  nombre_regla: string
+  formula: string
+  pesos: Record<string, number>
+  descripcion?: string
+}
+
+export interface ReglaTransicionResponse {
+  id: number
+  nombre_regla: string
+  formula: string
+  pesos: Record<string, number>
+  descripcion?: string
+  fecha_creacion?: string
+}
+
+export interface UpdatePesosRequest {
+  pesos: Record<string, number>
+}
+
+export interface CreateScenarioRequest {
+  nombre: string
+  variables_clima: Record<string, number>
+  variables_seguridad: Record<string, number>
+  regla_transicion_id: number
+  configuracion_malla: Record<string, unknown>
+}
+
+// Lo que devuelve POST /api/escenarios → VersionEscenarioResponseDTO
+export interface VersionEscenarioResponse {
+  id: number
+  escenario_id: number
+  numero_version: number
+  variables_clima: Record<string, number>
+  variables_seguridad: Record<string, number>
+  regla_transicion_id: number
+  configuracion_malla: Record<string, unknown>
+  estado: string
+  fecha_creacion?: string
+}
+
+// Lo que devuelve POST /api/simulaciones/ejecutar → EjecucionSimulacionDTO
+export interface PasoSimulacionDTO {
+  tiempo: number
+  densidad: number[][]
+  atractivo: number[][]
+  total_poblacion: number
+}
+
+export interface EjecucionSimulacionResponse {
+  id: number
+  version_escenario_id: number
+  estado: string
+  tiempo_actual: number
+  ejecutado_por?: number
+  fecha_inicio?: string
+  fecha_fin?: string
+  pasos: PasoSimulacionDTO[]
+}
+
+// Lo que devuelve GET /api/simulaciones/{id}/zonas-criticas → ZonasCriticasResponse
+export interface CeldaCritica {
+  i: number
+  j: number
+  densidad: number
+  lat?: number
+  lon?: number
+}
+
+export interface ZonasCriticasResponse {
+  ejecucion_id: number
+  umbral_percentil: number
+  total_zonas: number
+  zonas: CeldaCritica[]
+}
+
+// Lo que devuelve POST /api/validacion/comparar → ValidacionResponse
+export interface ValidacionRequest {
+  ejecucion_id: number
+  fecha_inicio: string // ISO
+  fecha_fin: string    // ISO
+}
+
+export interface ValidacionResponse {
+  ejecucion_id: number
+  rmse: number
+  r2: number
+  desviacion_estandar: number
+  ventana_inicio: string
+  ventana_fin: string
+  total_observaciones: number
+  generado_en: string
+  datos_adicionales?: Record<string, unknown>
+}
+
+// ─── Endpoints ────────────────────────────────────────────────────────────────
 
 export const simulationEndpoints = {
-  /**
-   * Crear nueva simulación espacial
-   * POST /api/simulaciones/ejecutar
-   *
-   * Cuerpo esperado: CreateSimulationRequest
-   * Respuesta: CreateSimulationResponse (con simulation_id)
-   */
-  createSimulation: (data: CreateSimulationRequest) =>
-    http.post<CreateSimulationResponse>('/api/simulaciones/ejecutar', data),
+  // 1. Crear regla de transición
+  createRule: (data: CreateRuleRequest) =>
+    http.post<ReglaTransicionResponse>('/api/reglas', data),
 
-  /**
-   * Ejecutar 1 paso de simulación - ENDPOINT UNIFICADO
-   * POST /api/simulations/{id}/run-espacial
-   *
-   * Devuelve en 1 request:
-   * - geojson completo (GeoFeatures con propiedades de celda)
-   * - urban_state (métricas agregadas)
-   * - metadata (generación, timestamp, etc.)
-   * - flag completada (backend indica si terminó)
-   *
-   * Cuerpo: { generations: 1 }
-   */
-  runStep: (simulationId: SimulationId, generations: number = 1) =>
-    http.post<RunStepResponse>(
-      `/simulations/${simulationId}/run-espacial`,
-      { generations },
+  // Listar reglas (útil para el selector)
+  listRules: () =>
+    http.get<ReglaTransicionResponse[]>('/api/reglas'),
+
+  // 2. Actualizar pesos de una regla
+  updateRuleWeights: (ruleId: number, data: UpdatePesosRequest) =>
+    http.put<ReglaTransicionResponse>(`/api/reglas/${ruleId}/pesos`, data),
+
+  // 3. Crear escenario → devuelve VersionEscenarioResponse
+  createScenario: (data: CreateScenarioRequest) =>
+    http.post<VersionEscenarioResponse>('/api/escenarios', data),
+
+  // 4. Listar versiones de un escenario
+  getScenarioVersions: (scenarioId: number) =>
+    http.get<VersionEscenarioResponse[]>(`/api/escenarios/${scenarioId}/versiones`),
+
+  // 5. Obtener una versión puntual
+  getScenarioVersion: (versionId: number) =>
+    http.get<VersionEscenarioResponse>(`/api/versiones-escenario/${versionId}`),
+
+  // 6. Ejecutar simulación → devuelve EjecucionSimulacionResponse (síncrono, incluye pasos)
+  createSimulation: (data: {
+    version_escenario_id: number
+    generaciones: number
+    radio_suavizado: number
+    movilidad: number
+    permanencia_base: number
+    sensibilidad_atractivo: number
+  }) => http.post<EjecucionSimulacionResponse>('/api/simulaciones/ejecutar', data),
+
+  // 7. Obtener pasos de una ejecución
+  getSimulationSteps: (ejecucionId: SimulationId | number) =>
+    http.get<PasoSimulacionDTO[]>(`/api/simulaciones/${ejecucionId}/pasos`),
+
+  // 8. Zonas críticas (requiere estado === "finalizado")
+  getCriticalZones: (ejecucionId: number, percentil = 90) =>
+    http.get<ZonasCriticasResponse>(
+      `/api/simulaciones/${ejecucionId}/zonas-criticas`,
+      { params: { percentil: String(percentil) } },
     ),
 
-  /**
-   * Resetear simulación
-   * POST /api/simulations/{id}/reset
-   *
-   * Respuesta: estado inicial (generación 0)
-   */
-  resetSimulation: (simulationId: SimulationId) =>
-    http.post<ResetSimulationResponse>(`/simulations/${simulationId}/reset`, {}),
+  // 9. Validar simulación contra observaciones reales
+  validateSimulation: (data: ValidacionRequest) =>
+    http.post<ValidacionResponse>('/api/validacion/comparar', data),
 
-  // Actualizar pesos de una regla de transición
-  // PUT /api/reglas/{id}/pesos  body: { frio:number, comida:number, seguridad:number }
-  updateRuleWeights: (ruleId: number, weights: RuleWeightsRequest) =>
-    http.put(`/api/reglas/${encodeURIComponent(String(ruleId))}/pesos`, weights),
-
-  // Crear escenario
-  // POST /api/escenarios/  body: { nombre, clima: { temperatura, lluvia }, seguridad, malla: { filas, columnas } }
-  createScenario: (payload: CreateScenarioRequest) => http.post<CreateScenarioResponse>('/api/escenarios/', payload),
-
-  // Obtener pasos/matrices de una simulación
-  // GET /api/simulaciones/{id}/pasos
-  getSimulationSteps: (simulationId: SimulationId) => http.get(`/api/simulaciones/${encodeURIComponent(String(simulationId))}/pasos`),
-
-  // Comparar simulaciones
-  // GET /api/simulaciones/comparar?ids=id1,id2
-  compareSimulations: (ids: string[]) => http.get(`/api/simulaciones/comparar?ids=${ids.map(encodeURIComponent).join(',')}`),
-
-  // Obtener estado de ejecución para polling
-  // GET /api/simulaciones/{ejecucion_id}/estado
-  getExecutionStatus: (ejecucionId: string | number) =>
-    http.get<{ estado: string; progreso?: number; mensaje?: string }>(`/api/simulaciones/${encodeURIComponent(String(ejecucionId))}/estado`),
-
-  /**
-   * 🔧 ENDPOINT DE DEBUGGING
-   * GET /api/health/simulaciones
-   *
-   * Retorna información de salud del backend:
-   * {
-   *   backend_version: "1.0.0",
-   *   database_connected: true,
-   *   cache_size: 5,
-   *   ultimo_ejecucion_id: "sim_20260518_abc123"
-   * }
-   */
-  debugBackendStatus: () =>
-    http.get<{
-      backend_version?: string
-      database_connected?: boolean
-      cache_size?: number
-      ultimo_ejecucion_id?: string
-      error?: string
-    }>('/api/health/simulaciones').catch(() => ({
-      data: { error: 'Backend no accesible', backend_version: 'unknown' },
-      status: 500,
-      ok: false,
-      headers: new Headers(),
-    })),
+  // 12. Comparar dos ejecuciones
+  compareSimulations: (id1: number, id2: number) =>
+    http.get(`/api/simulaciones/comparar?ids=${id1},${id2}`),
 }
