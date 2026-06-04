@@ -2,10 +2,11 @@ import { useMemo, useEffect, useState } from 'react'
 import {
   MapContainer,
   TileLayer,
-  GeoJSON,
   Marker,
   Popup,
   Polyline,
+  Rectangle,
+  Tooltip,
 } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -15,13 +16,32 @@ import type { GeoJsonResponse } from '@/shared/contracts/simulation.contract'
 import { mapsEndpoints } from '@/services/endpoints/maps.endpoints'
 import type { RutaMovilidad } from '@/services/endpoints/maps.endpoints'
 
-function getDensityColor(ratio: number): string {
-  const hue = 120 * (1 - Math.min(ratio, 1))
-  return `hsl(${hue}, 80%, 50%)`
+const LAT_MIN = 3.3
+const LAT_MAX = 3.55
+const LON_MIN = -76.6
+const LON_MAX = -76.45
+
+interface ActiveCell {
+  bounds: [[number, number], [number, number]]
+  x: number
+  y: number
+  agentes: number
+  densidad: number
+  ratio: number
 }
 
-function getDensityRadius(ratio: number): number {
-  return 4 + Math.min(ratio, 1) * 16
+function getCellColor(ratio: number): string {
+  const clamped = Math.min(Math.max(ratio, 0), 1)
+
+  if (clamped > 0.85) return '#f43f5e' // Rose 500 (Vivo)
+  if (clamped > 0.65) return '#fbbf24' // Amber 400
+  if (clamped > 0.45) return '#22c55e' // Green 500
+  if (clamped > 0.25) return '#0ea5e9' // Sky 500
+  return '#8b5cf6' // Violet 500
+}
+
+function getCellOpacity(ratio: number): number {
+  return 0.58 + Math.min(Math.max(ratio, 0), 1) * 0.34
 }
 
 const POI_ICONS: Record<string, { emoji: string; color: string }> = {
@@ -92,11 +112,6 @@ export const SimulationMap = () => {
 
     const paso = loadedPasos[selectedStep]
 
-    const LAT_MIN = 3.3
-    const LAT_MAX = 3.55
-    const LON_MIN = -76.6
-    const LON_MAX = -76.45
-
     const rows = paso.densidad.length
     const cols = rows > 0 ? paso.densidad[0].length : 0
 
@@ -144,38 +159,79 @@ export const SimulationMap = () => {
     })
   }, [selectedStep, loadedPasos])
 
-  const { filteredGeoJson, maxAgentes } = useMemo(() => {
+  const activeCells = useMemo<ActiveCell[]>(() => {
+    const step =
+      selectedStep !== null
+        ? loadedPasos[selectedStep]
+        : loadedPasos.find((paso) => paso.tiempo === currentGeneration)
+
+    if (step) {
+      const rows = step.densidad.length
+      const cols = rows > 0 ? step.densidad[0].length : 0
+      const latStep = (LAT_MAX - LAT_MIN) / Math.max(rows, 1)
+      const lonStep = (LON_MAX - LON_MIN) / Math.max(cols, 1)
+      const occupied = []
+      let maxAgents = 0
+
+      for (let i = 0; i < rows; i++) {
+        for (let j = 0; j < cols; j++) {
+          const densidad = step.densidad[i]?.[j] ?? 0
+          if (densidad <= 0) continue
+
+          const agentes = Math.max(1, Math.round(densidad * 100))
+          if (agentes > maxAgents) maxAgents = agentes
+
+          occupied.push({
+            x: j,
+            y: i,
+            agentes,
+            densidad,
+            bounds: [
+              [LAT_MIN + i * latStep, LON_MIN + j * lonStep],
+              [LAT_MIN + (i + 1) * latStep, LON_MIN + (j + 1) * lonStep],
+            ] as [[number, number], [number, number]],
+          })
+        }
+      }
+
+      return occupied.map((cell) => ({
+        ...cell,
+        ratio: cell.agentes / Math.max(maxAgents, 1),
+      }))
+    }
+
     const source = timelineGeoJson ?? geojson
+    if (!source) return []
 
-    if (!source) {
+    const features = source.features.filter((f) => f.geometry !== null)
+    let maxAgents = 0
+
+    for (const feature of features) {
+      const agentes = (feature.properties?.agentes as number) ?? 0
+      if (agentes > maxAgents) maxAgents = agentes
+    }
+
+    return features.map((feature) => {
+      const x = (feature.properties?.x as number) ?? 0
+      const y = (feature.properties?.y as number) ?? 0
+      const agentes = (feature.properties?.agentes as number) ?? 0
+      const densidad = (feature.properties?.densidad as number) ?? 0
+      const [lon, lat] = feature.geometry.coordinates
+      const cellSize = 0.001
+
       return {
-        filteredGeoJson: null,
-        maxAgentes: 1,
+        x,
+        y,
+        agentes,
+        densidad,
+        ratio: agentes / Math.max(maxAgents, 1),
+        bounds: [
+          [lat - cellSize / 2, lon - cellSize / 2],
+          [lat + cellSize / 2, lon + cellSize / 2],
+        ],
       }
-    }
-
-    const features = source.features.filter(
-      (f) => f.geometry !== null,
-    )
-
-    let max = 0
-
-    for (const f of features) {
-      const agentes = (f.properties?.agentes as number) ?? 0
-
-      if (agentes > max) {
-        max = agentes
-      }
-    }
-
-    return {
-      filteredGeoJson: {
-        ...source,
-        features,
-      } as GeoJsonResponse,
-      maxAgentes: Math.max(max, 1),
-    }
-  }, [geojson, timelineGeoJson])
+    })
+  }, [currentGeneration, geojson, loadedPasos, selectedStep, timelineGeoJson])
 
   return (
     <div
@@ -202,50 +258,24 @@ export const SimulationMap = () => {
           attribution="&copy; CARTO"
         />
 
-        {filteredGeoJson && (
-          <GeoJSON
-            key={`sim-${currentGeneration}-${filteredGeoJson.features.length}-${selectedStep ?? 'live'}`}
-            data={filteredGeoJson as any}
-            pointToLayer={(feature, latlng) => {
-              const agentes =
-                (feature.properties?.agentes as number) ?? 0
-
-              const ratio = agentes / maxAgentes
-
-              return L.circleMarker(latlng, {
-                radius: getDensityRadius(ratio),
-                fillColor: getDensityColor(ratio),
-                color: '#ffffff',
-                weight: 1,
-                opacity: 0.9,
-                fillOpacity: 0.85,
-              })
+        {/* Renderizado de celdas ocupadas como rectángulos vivos */}
+        {activeCells.map((cell) => (
+          <Rectangle
+            key={`cell-${cell.x}-${cell.y}-${selectedStep ?? 'live'}`}
+            bounds={cell.bounds}
+            pathOptions={{
+              fillColor: getCellColor(cell.ratio),
+              fillOpacity: getCellOpacity(cell.ratio),
+              stroke: false, // Esto hace que la malla vacía sea invisible
             }}
-            onEachFeature={(feature, layer) => {
-              const agentes =
-                (feature.properties?.agentes as number) ?? 0
-
-              const x =
-                (feature.properties?.x as number) ?? '?'
-
-              const y =
-                (feature.properties?.y as number) ?? '?'
-
-              const densityPct = (
-                (agentes / maxAgentes) *
-                100
-              ).toFixed(1)
-
-              layer.bindTooltip(
-                `<b>Celda [${x},${y}]</b><br/>Agentes: ${agentes}<br/>Densidad: ${densityPct}%`,
-                {
-                  className: 'sim-tooltip',
-                  sticky: true,
-                },
-              )
-            }}
-          />
-        )}
+          >
+            <Tooltip sticky className="sim-tooltip">
+              <b>Celda [{cell.x},{cell.y}]</b><br/>
+              Agentes: {cell.agentes}<br/>
+              Densidad: {(cell.densidad * 100).toFixed(1)}%
+            </Tooltip>
+          </Rectangle>
+        ))}
 
         {routes.map((r, idx) => (
           <Polyline

@@ -250,7 +250,9 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
       if (!simulationId || status === 'running') return
       if (loadedPasos.length === 0) { set({ error: 'No hay pasos cargados. Ejecuta una simulación primero.' }); return }
       set({ status: 'running', error: null, retryCount: 0, backendConnected: true })
-      scheduleTick()
+      void get().stepSimulation().then(() => {
+        if (get().status === 'running') scheduleTick()
+      })
     },
 
     pauseSimulation: () => {

@@ -28,7 +28,16 @@ export interface CreateScenarioRequest {
   variables_clima: Record<string, number>
   variables_seguridad: Record<string, number>
   regla_transicion_id: number
-  configuracion_malla: Record<string, unknown>
+  configuracion_malla: {
+    resolucion_metros?: number
+    tamano_celda?: number
+    ancho_celdas?: number
+    ancho?: number
+    alto_celdas?: number
+    alto?: number
+    densidad_inicial?: number[][]
+    [key: string]: unknown
+  }
 }
 
 // Lo que devuelve POST /api/escenarios → VersionEscenarioResponseDTO

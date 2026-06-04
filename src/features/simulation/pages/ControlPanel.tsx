@@ -11,6 +11,40 @@ const SPEED_OPTIONS = [
   { label: 'Rapido', ms: 500 },
 ] as const
 
+function buildInitialDensity(rows: number, cols: number, totalAgents: number): number[][] {
+  const safeRows = Number.isFinite(rows) ? Math.max(1, Math.floor(rows)) : 100
+  const safeCols = Number.isFinite(cols) ? Math.max(1, Math.floor(cols)) : 100
+  const safeAgents = Number.isFinite(totalAgents) ? Math.max(1, Math.floor(totalAgents)) : 1200
+  const density = Array.from({ length: safeRows }, () => Array(safeCols).fill(0))
+  const centers = [
+    { row: Math.round(safeRows * 0.28), col: Math.round(safeCols * 0.34), weight: 0.34 },
+    { row: Math.round(safeRows * 0.52), col: Math.round(safeCols * 0.55), weight: 0.42 },
+    { row: Math.round(safeRows * 0.72), col: Math.round(safeCols * 0.42), weight: 0.24 },
+  ]
+
+  for (const center of centers) {
+    const agentsForCenter = safeAgents * center.weight
+    const radiusRows = Math.max(2, Math.round(safeRows * 0.08))
+    const radiusCols = Math.max(2, Math.round(safeCols * 0.08))
+
+    for (let row = 0; row < safeRows; row++) {
+      for (let col = 0; col < safeCols; col++) {
+        const dr = (row - center.row) / radiusRows
+        const dc = (col - center.col) / radiusCols
+        const influence = Math.exp(-(dr * dr + dc * dc))
+        density[row][col] += agentsForCenter * influence
+      }
+    }
+  }
+
+  const currentTotal = density.flat().reduce((sum, value) => sum + value, 0)
+  if (currentTotal <= 0) return density
+
+  return density.map((row) =>
+    row.map((value) => Number(((value / currentTotal) * safeAgents).toFixed(4))),
+  )
+}
+
 function getBackendErrorMessage(data: unknown): string {
   if (!data || typeof data !== 'object' || !('detail' in data)) return 'Error desconocido'
   const detail = (data as { detail: unknown }).detail
@@ -29,6 +63,7 @@ function getBackendErrorMessage(data: unknown): string {
 export const ControlPanel = () => {
   const status = useSimulationStore((s) => s.status)
   const startSimulation = useSimulationStore((s) => s.startSimulation)
+  const executeSimulationAsync = useSimulationStore((s) => s.executeSimulationAsync)
   const pauseSimulation = useSimulationStore((s) => s.pauseSimulation)
   const resetSimulation = useSimulationStore((s) => s.resetSimulation)
   const stepSimulation = useSimulationStore((s) => s.stepSimulation)
@@ -62,6 +97,8 @@ export const ControlPanel = () => {
       const resolucionMetros = Number(prompt('Resolución malla (metros)', '50'))
       const anchoCeldas = Number(prompt('Ancho en celdas', '100'))
       const altoCeldas = Number(prompt('Alto en celdas', '100'))
+      const totalAgentes = Number(prompt('Agentes iniciales', '1200'))
+      const densidadInicial = buildInitialDensity(altoCeldas, anchoCeldas, totalAgentes)
 
       const res = await simulationEndpoints.createScenario({
         nombre,
@@ -79,6 +116,8 @@ export const ControlPanel = () => {
           resolucion_metros: resolucionMetros,
           ancho_celdas: anchoCeldas,
           alto_celdas: altoCeldas,
+          densidad_inicial: densidadInicial,
+          total_agentes_iniciales: totalAgentes,
         },
       })
 
@@ -90,12 +129,51 @@ export const ControlPanel = () => {
       const versionId = res.data?.id
       if (versionId) {
         setLastScenarioVersionId(versionId)
+        useSimulationStore.getState().pauseSimulation()
+        useSimulationStore.setState({
+          simulationId: null,
+          ejecucionId: null,
+          status: 'idle',
+          currentGeneration: 0,
+          geojson: null,
+          urbanState: null,
+          history: [],
+          loadedPasos: [],
+          error: null,
+          retryCount: 0,
+        })
         alert(`Escenario creado. Version ID: ${versionId} — úsalo para ejecutar la simulación.`)
       } else {
         alert('Escenario creado, pero no se recibió el ID de versión. Revísalo en el backend.')
       }
     } catch {
       alert('Error de red al crear escenario')
+    }
+  }
+
+  const handlePlayPause = async () => {
+    if (isRunning) {
+      pauseSimulation()
+      return
+    }
+
+    if (hasSimulation) {
+      startSimulation()
+      return
+    }
+
+    await executeSimulationAsync({
+      version_escenario_id: lastScenarioVersionId,
+      generaciones: maxGenerations,
+      radio_suavizado: 1,
+      movilidad: 0.25,
+      permanencia_base: 0.1,
+      sensibilidad_atractivo: 1,
+    })
+
+    const state = useSimulationStore.getState()
+    if (!state.error && state.loadedPasos.length > 0) {
+      state.startSimulation()
     }
   }
 
@@ -141,8 +219,8 @@ export const ControlPanel = () => {
         {/* Controles de transporte */}
         <div className="sim-transport">
           <button
-            onClick={isRunning ? pauseSimulation : startSimulation}
-            disabled={!hasSimulation && !isRunning}
+            onClick={handlePlayPause}
+            disabled={Boolean(pollingStatus)}
             className={`sim-btn-labeled play-pause ${isRunning ? 'running' : ''}`}
           >
             {isRunning ? (
