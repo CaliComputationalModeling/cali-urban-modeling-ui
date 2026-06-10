@@ -51,7 +51,7 @@ export const useObservationStore = create<ObservationState>()(
 
       fetchMyObservations: async (userId: number) => {
         set({ isLoading: true });
-        const response = await observationEndpoints.getAll({ user_id: userId });
+        const response = await observationEndpoints.getAll({ usuario_id: userId });
         if (response.ok) {
           set({ myObservations: response.data?.items || [], isLoading: false });
         } else {

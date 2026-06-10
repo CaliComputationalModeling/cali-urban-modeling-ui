@@ -53,6 +53,14 @@ export interface VersionEscenarioResponse {
   fecha_creacion?: string
 }
 
+export interface EscenarioResponse {
+  id: number | null
+  nombre: string
+  creado_por?: number | null
+  activo: boolean
+  fecha_creacion?: string
+}
+
 // Lo que devuelve POST /api/simulaciones/ejecutar → EjecucionSimulacionDTO
 export interface PasoSimulacionDTO {
   tiempo: number
@@ -125,6 +133,12 @@ export const simulationEndpoints = {
   // 3. Crear escenario → devuelve VersionEscenarioResponse
   createScenario: (data: CreateScenarioRequest) =>
     http.post<VersionEscenarioResponse>('/api/escenarios', data),
+
+  listScenarios: () =>
+    http.get<EscenarioResponse[]>('/api/escenarios'),
+
+  listScenarioVersions: () =>
+    http.get<VersionEscenarioResponse[]>('/api/escenarios/versiones'),
 
   // 4. Listar versiones de un escenario
   getScenarioVersions: (scenarioId: number) =>

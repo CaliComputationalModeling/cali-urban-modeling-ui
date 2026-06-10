@@ -1,5 +1,7 @@
 export { authEndpoints } from "./auth.endpoints";
 export { userEndpoints } from "./user.endpoints";
+export { roleEndpoints } from "./role.endpoints";
+export type { Role, RoleCreate, RoleUpdate } from "./role.endpoints";
 export { observationEndpoints } from "./observation.endpoints";
 export { simulationEndpoints } from "./simulation.endpoints";
 export type { CreateScenarioRequest, RuleWeightsRequest } from "@/shared/contracts/simulation.contract";

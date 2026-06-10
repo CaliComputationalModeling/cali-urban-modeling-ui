@@ -1,7 +1,7 @@
 import { http } from '../http'
 
-export type ReportTemplateType = 'TRIMESTRAL' | 'GEOGRAFICO'
-export type ReportFormat = 'PDF' | 'EXCEL'
+export type ReportTemplateType = 'trimestral' | 'geografico'
+export type ReportFormat = 'pdf' | 'excel'
 
 // 13. Body actualizado para POST /api/reportes/generar
 export interface GenerateReportRequest {
@@ -10,7 +10,7 @@ export interface GenerateReportRequest {
   fecha_fin: string        // YYYY-MM-DD
   formato: ReportFormat
   componentes?: string[]   // e.g. ["kpis", "mapa", "rutas"]
-  ejecucion_ids?: string[] // IDs de simulaciones a incluir
+  ejecucion_ids?: number[] // IDs de simulaciones a incluir
 }
 
 export interface ReportHistoryItem {
@@ -29,7 +29,4 @@ export const reportsEndpoints = {
   // POST /api/reportes/generar
   generate: (payload: GenerateReportRequest) =>
     http.postBlob('/api/reportes/generar', payload),
-
-  history: () =>
-    http.get<ReportHistoryItem[]>('/api/reportes/historial'),
 }

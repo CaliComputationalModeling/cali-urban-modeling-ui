@@ -46,8 +46,8 @@ export const useMapsStore = create<MapsState>((set, get) => ({
   fetchHeatmap: async () => {
     set({ isLoadingHeatmap: true, error: null })
     const res = await mapsEndpoints.getHeatmap()
-    if (res.ok && Array.isArray(res.data)) {
-      set({ heatmap: res.data, isLoadingHeatmap: false })
+    if (res.ok && res.data && Array.isArray(res.data.celdas)) {
+      set({ heatmap: res.data.celdas, isLoadingHeatmap: false })
     } else {
       set({ isLoadingHeatmap: false, error: extractErrorMessage(res.data) })
     }

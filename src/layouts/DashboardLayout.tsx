@@ -7,6 +7,9 @@ import {
   Map as MapIcon,
   FileText,
   Shield,
+  ClipboardList,
+  Settings2,
+  MapPin,
   LogOut,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
@@ -39,6 +42,27 @@ const menuItems = [
     label: 'Operadores',
     section: 'PRINCIPAL',
     roles: [UserRole.ADMIN, UserRole.COORDINATOR],
+  },
+  {
+    path: '/roles',
+    icon: Shield,
+    label: 'Roles',
+    section: 'PRINCIPAL',
+    roles: [UserRole.ADMIN, UserRole.COORDINATOR],
+  },
+  {
+    path: '/observations',
+    icon: MapPin,
+    label: 'Observaciones',
+    section: 'OPERACIONES',
+    roles: [UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FIELD_WORKER],
+  },
+  {
+    path: '/scenarios',
+    icon: Settings2,
+    label: 'Escenarios',
+    section: 'OPERACIONES',
+    roles: [UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN],
   },
   {
     path: '/simulation',

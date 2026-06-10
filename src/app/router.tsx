@@ -9,6 +9,9 @@ import { SimulationPage } from '@/features/simulation/pages/SimulationPage'
 import { ExecutiveDashboardPage } from '@/features/dashboard/pages/ExecutiveDashboardPage'
 import { MapsPage } from '@/features/maps/pages/MapsPage'
 import { ReportsPage } from '@/features/reports/pages/ReportsPage'
+import { RolesPage } from '@/features/roles/pages/RolesPage'
+import { ObservationsPage } from '@/features/observations/pages/ObservationsPage'
+import { ScenariosPage } from '@/features/scenarios/pages/ScenariosPage'
 import { UserRole } from '@/shared/types/user.types'
 
 export const AppRouter = () => {
@@ -46,6 +49,39 @@ export const AppRouter = () => {
             <DashboardLayout>
               <PermissionGate allowedRoles={[UserRole.ADMIN, UserRole.COORDINATOR]}>
                 <UserPage />
+              </PermissionGate>
+            </DashboardLayout>
+          }
+        />
+
+        <Route
+          path="/roles"
+          element={
+            <DashboardLayout>
+              <PermissionGate allowedRoles={[UserRole.ADMIN, UserRole.COORDINATOR]}>
+                <RolesPage />
+              </PermissionGate>
+            </DashboardLayout>
+          }
+        />
+
+        <Route
+          path="/observations"
+          element={
+            <DashboardLayout>
+              <PermissionGate allowedRoles={[UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FIELD_WORKER]}>
+                <ObservationsPage />
+              </PermissionGate>
+            </DashboardLayout>
+          }
+        />
+
+        <Route
+          path="/scenarios"
+          element={
+            <DashboardLayout>
+              <PermissionGate allowedRoles={[UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN]}>
+                <ScenariosPage />
               </PermissionGate>
             </DashboardLayout>
           }

@@ -3,12 +3,9 @@ import type { Observation, ObservationCreate } from "@/shared/types/observation.
 
 export const observationEndpoints = {
   getAll: (params?: { 
-    limit?: number; 
-    offset?: number; 
-    user_id?: number;
-    bbox?: string; // format: "lonMin,latMin,lonMax,latMax"
+    usuario_id?: number;
   }) =>
-    http.get<{ items: Observation[]; total: number }>("/observations", {
+    http.get<Observation[]>("/observations", {
       params: params
         ? Object.fromEntries(
             Object.entries(params)
@@ -22,7 +19,7 @@ export const observationEndpoints = {
   create: (data: ObservationCreate) =>
     http.post<Observation>("/observations", data),
   update: (id: string, data: Partial<ObservationCreate>) =>
-    http.patch<Observation>(`/observations/${id}`, data),
+    http.put<Observation>(`/observations/${id}`, data),
   delete: (id: string) =>
     http.delete(`/observations/${id}`),
 };

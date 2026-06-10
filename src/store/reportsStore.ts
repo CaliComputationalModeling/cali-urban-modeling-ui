@@ -23,8 +23,8 @@ function parseContentDispositionFilename(contentDisposition: string | null): str
 }
 
 function defaultFileName(payload: GenerateReportRequest): string {
-  const ext = payload.formato === 'PDF' ? 'pdf' : 'xlsx'
-  return `reporte_${payload.plantilla.toLowerCase()}_${payload.fecha_inicio}_a_${payload.fecha_fin}.${ext}`
+  const ext = payload.formato === 'pdf' ? 'pdf' : 'xlsx'
+  return `reporte_${payload.tipo_plantilla}_${payload.fecha_inicio}_a_${payload.fecha_fin}.${ext}`
 }
 
 function triggerDownload(blob: Blob, filename: string) {
@@ -56,21 +56,14 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
   error: null,
 
   fetchHistory: async () => {
-    set({ isLoadingHistory: true, error: null })
-    const res = await reportsEndpoints.history()
-    if (res.ok && Array.isArray(res.data)) {
-      set({ history: res.data, isLoadingHistory: false })
-    } else {
-      // no bloqueamos la UI si el endpoint no existe
-      set({ isLoadingHistory: false })
-    }
+    set({ isLoadingHistory: false, error: null })
   },
 
   generate: async (payload) => {
     const optimisticId = `local-${Date.now()}`
     const optimisticItem: ReportHistoryItem = {
       id: optimisticId,
-      plantilla: payload.plantilla,
+      plantilla: payload.tipo_plantilla,
       formato: payload.formato,
       fecha_inicio: payload.fecha_inicio,
       fecha_fin: payload.fecha_fin,

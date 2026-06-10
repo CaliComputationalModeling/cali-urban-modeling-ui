@@ -27,6 +27,8 @@ export interface RutasMovilidadResponse {
   confluencias?: { lat: number; lon: number; intensidad: number }[]
 }
 
+export type PredictedRoutesResponse = RutasMovilidadResponse
+
 export interface ComparacionHeatmapRutasResponse {
   mapa_calor: MapaCalorResponse
   rutas: RutasMovilidadResponse
