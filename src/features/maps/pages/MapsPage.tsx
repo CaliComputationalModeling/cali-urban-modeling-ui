@@ -1,11 +1,23 @@
 import { useEffect, useMemo, useState } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Polyline, Tooltip as LeafletTooltip } from 'react-leaflet'
+import { MapContainer, TileLayer, CircleMarker, Polyline, Tooltip as LeafletTooltip, GeoJSON } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { toast } from 'sonner'
 import { useMapsStore } from '@/store/mapsStore'
+import { useSimulationStore } from '@/store/simulationStore'
+import http from '@/services/http'
+import type { PointOfInterest, GeoJsonFeature } from '@/shared/contracts/simulation.contract'
+import type { Feature, GeoJsonProperties, Geometry } from 'geojson'
 
 type LatLngTuple = [number, number]
+const COMUNAS_STYLE: L.PathOptions = {
+  color: 'rgba(255,255,255,0.35)',
+  weight: 1.5,
+  fillColor: 'rgba(255,255,255,0.02)',
+  fillOpacity: 0.02,
+  opacity: 0.9,
+  dashArray: '4,4',
+}
 
 function hslGreenToRed(ratio: number): string {
   const clamped = Math.max(0, Math.min(1, ratio))
@@ -24,6 +36,19 @@ function getBoundsFromPoints(points: LatLngTuple[]): L.LatLngBounds | null {
   return b
 }
 
+function getComunaLabel(properties: GeoJsonProperties): string {
+  const rawValue = properties?.NUMERO_COMUNA ?? properties?.numero_comuna ?? properties?.comuna ?? properties?.COMUNA ?? properties?.nombre ?? properties?.NOMBRE
+  return rawValue ? `Comuna ${String(rawValue).replace(/^comuna\s+/i, '')}` : 'Comuna'
+}
+
+function bindComunaTooltip(feature: Feature<Geometry, GeoJsonProperties>, layer: L.Layer) {
+  layer.bindTooltip(getComunaLabel(feature.properties), {
+    permanent: false,
+    direction: 'center',
+    className: 'comuna-tooltip',
+  })
+}
+
 export const MapsPage = () => {
   const heatmap = useMapsStore((s) => s.heatmap)
   const predicted = useMapsStore((s) => s.predicted)
@@ -35,13 +60,36 @@ export const MapsPage = () => {
   const isLoadingRoutes = useMapsStore((s) => s.isLoadingRoutes)
   const error = useMapsStore((s) => s.error)
   const clearError = useMapsStore((s) => s.clearError)
+  const showComunasLayer = useMapsStore((s) => s.showComunasLayer)
+  const comunasGeoJson = useMapsStore((s) => s.comunasGeoJson)
+  const toggleComunasLayer = useMapsStore((s) => s.toggleComunasLayer)
+  const fetchComunasGeoJson = useMapsStore((s) => s.fetchComunasGeoJson)
+
+  const simulationGeojson = useSimulationStore((s) => s.geojson)
+  const simulationGeneration = useSimulationStore((s) => s.currentGeneration)
+  const simulationStatus = useSimulationStore((s) => s.status)
 
   const [legendMin, setLegendMin] = useState(0)
   const [legendMax, setLegendMax] = useState(100)
+  const [pois, setPois] = useState<PointOfInterest[]>([])
+  const [showSimulationCells, setShowSimulationCells] = useState(false)
 
   useEffect(() => {
     fetchHeatmap().catch(() => null)
   }, [fetchHeatmap])
+
+  useEffect(() => {
+    if (showComunasLayer) fetchComunasGeoJson().catch(() => null)
+  }, [fetchComunasGeoJson, showComunasLayer])
+
+  useEffect(() => {
+    http
+      .get<{ pois: PointOfInterest[] }>('/observations/pois')
+      .then((res) => {
+        if (res.ok && res.data?.pois) setPois(res.data.pois)
+      })
+      .catch(() => null)
+  }, [])
 
   useEffect(() => {
     if (error) {
@@ -84,8 +132,9 @@ export const MapsPage = () => {
       pts.push([r.origen.lat, r.origen.lon], [r.destino.lat, r.destino.lon])
     }
     for (const p of predicted?.confluencias ?? []) pts.push([p.lat, p.lon])
+    for (const poi of pois) pts.push([poi.latitud, poi.longitud])
     return pts
-  }, [filteredHeatmap, predicted])
+  }, [filteredHeatmap, pois, predicted])
 
   const bounds = useMemo(() => getBoundsFromPoints(allPointsForFit), [allPointsForFit])
 
@@ -237,6 +286,14 @@ export const MapsPage = () => {
           >
             <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" attribution="&copy; CARTO" />
 
+            {showComunasLayer && comunasGeoJson && (
+              <GeoJSON
+                data={comunasGeoJson}
+                style={COMUNAS_STYLE}
+                onEachFeature={bindComunaTooltip}
+              />
+            )}
+
             {/* Heatmap KDE */}
             {filteredHeatmap.map((c, idx) => {
               const d = Number(c.densidad ?? 0)
@@ -326,7 +383,6 @@ export const MapsPage = () => {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                       <b>Confluencia</b>
                       <span>Intensidad: {formatNumber(intensity)}</span>
-                      {p.etiqueta && <span>{p.etiqueta}</span>}
                       <span>
                         Lat/Lon: {p.lat.toFixed(4)}, {p.lon.toFixed(4)}
                       </span>
@@ -335,7 +391,87 @@ export const MapsPage = () => {
                 </CircleMarker>
               )
             })}
+
+            {/* Simulación en vivo — agentes/celdas como puntos */}
+            {showSimulationCells && simulationGeojson?.features?.map((feature, idx) => {
+              const f = feature as GeoJsonFeature
+              const d = f.properties.densidad
+              const [lon, lat] = f.geometry.coordinates
+              const maxD = simulationGeojson.metadata.max_densidad || 1
+              const ratio = Math.min(d / maxD, 1)
+              let fillColor: string
+              if (ratio < 0.3) fillColor = '#fef08a'
+              else if (ratio < 0.65) fillColor = '#f97316'
+              else fillColor = '#b91c1c'
+              const radius = 4 + ratio * 8
+              return (
+                <CircleMarker
+                  key={`sim-cell-${idx}`}
+                  center={[lat, lon]}
+                  radius={radius}
+                  pathOptions={{
+                    color: '#ffffff',
+                    weight: 0.5,
+                    opacity: 0.4,
+                    fillColor,
+                    fillOpacity: 0.85,
+                  }}
+                >
+                  <LeafletTooltip sticky className="sim-tooltip">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <b>Celda (simulación)</b>
+                      <span>Densidad: {`${Math.round(d * 100)}%`}</span>
+                      <span>Agentes: {f.properties.agentes}</span>
+                      <span>Generación: {simulationGeneration}</span>
+                    </div>
+                  </LeafletTooltip>
+                </CircleMarker>
+              )
+            })}
+
+            {pois
+              .filter((poi) => Number.isFinite(poi.latitud) && Number.isFinite(poi.longitud))
+              .map((poi) => (
+                <CircleMarker
+                  key={`poi-${poi.id}`}
+                  center={[poi.latitud, poi.longitud]}
+                  radius={6 + Number(poi.peso ?? 0) * 2}
+                  pathOptions={{
+                    color: '#ffffff',
+                    weight: 1,
+                    opacity: 0.9,
+                    fillColor: poi.tipo_poi.includes('comedor') ? '#22c55e' : '#a855f7',
+                    fillOpacity: 0.85,
+                  }}
+                >
+                  <LeafletTooltip sticky className="sim-tooltip">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <b>{poi.nombre}</b>
+                      <span>Tipo: {poi.tipo_poi}</span>
+                      <span>Peso: {poi.peso ?? '—'}</span>
+                      <span>Radio: {poi.radio_influencia ?? '—'} celdas</span>
+                    </div>
+                  </LeafletTooltip>
+                </CircleMarker>
+              ))}
           </MapContainer>
+
+          <div className="sim-layer-toggle">
+            <button
+              className={(simulationStatus === 'running' || simulationStatus === 'completed' || simulationStatus === 'paused') && showSimulationCells ? 'active' : ''}
+              onClick={() => setShowSimulationCells((v) => !v)}
+              style={{ opacity: (simulationStatus === 'running' || simulationStatus === 'completed' || simulationStatus === 'paused') ? 1 : 0.5 }}
+              title={simulationStatus === 'idle' ? 'Ejecuta una simulación primero' : 'Mostrar celdas de simulación'}
+            >
+              🧬 Células simulación
+            </button>
+            <button
+              className={showComunasLayer ? 'active' : ''}
+              onClick={toggleComunasLayer}
+            >
+              📍 Ver Comunas
+            </button>
+          </div>
 
           {/* overlay status */}
           {(isLoadingHeatmap || isLoadingRoutes) && (
@@ -369,16 +505,28 @@ export const MapsPage = () => {
               title="Verde → Amarillo → Rojo"
             />
             <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
-              Baja densidad → Alta densidad
+              Heatmap KDE
             </span>
           </div>
+          {(showSimulationCells || (simulationStatus !== 'idle')) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#fef08a', border: '1px solid rgba(255,255,255,0.3)' }} />
+                <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#f97316', border: '1px solid rgba(255,255,255,0.3)' }} />
+                <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#b91c1c', border: '1px solid rgba(255,255,255,0.3)' }} />
+              </div>
+              <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+                Celda simulación (baja → alta densidad)
+              </span>
+            </div>
+          )}
           <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
-            Celdas: {filteredHeatmap.length} · Rutas: {(predicted?.rutas ?? []).length} · Confluencias:{' '}
-            {(predicted?.confluencias ?? []).length}
+            Celdas (KDE): {filteredHeatmap.length} · Simulación:{' '}
+            {simulationGeojson?.features?.length ?? 0} · Rutas: {(predicted?.rutas ?? []).length} · Confluencias:{' '}
+            {(predicted?.confluencias ?? []).length} · Atractores: {pois.length}
           </div>
         </div>
       </section>
     </div>
   )
 }
-

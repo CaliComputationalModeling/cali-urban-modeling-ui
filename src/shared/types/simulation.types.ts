@@ -19,6 +19,21 @@ export interface SimulationRule {
   wolfram_code?: number
 }
 
+export interface Cell {
+  position: { x: number; y: number }
+  state: number
+  geo_coordinate?: {
+    latitude: number
+    longitude: number
+  }
+}
+
+export interface SimulationLog {
+  timestamp: string
+  level: 'info' | 'warning' | 'error' | 'success'
+  message: string
+}
+
 export interface Simulation {
   simulation_id: string
   name: string

@@ -1,4 +1,5 @@
 import { http } from '../http'
+import type { GeoJsonObject } from 'geojson'
 
 // Tipos alineados con mapa_router.py
 
@@ -74,4 +75,7 @@ export const mapsEndpoints = {
           .map(([k, v]) => [k, String(v)])
       ),
     }),
+
+  getComunasGeoJson: () =>
+    http.get<GeoJsonObject>('/api/mapas/comunas'),
 }

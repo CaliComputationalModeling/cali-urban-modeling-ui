@@ -57,14 +57,16 @@ const Metric = ({
   value,
   color = 'var(--color-accent)',
   sub,
+  testId,
 }: {
   icon: React.ComponentType<{ size?: number | string; color?: string }>
   label: string
   value: string | number
   color?: string
   sub?: string
+  testId?: string
 }) => (
-  <div className="sim-metric">
+  <div className="sim-metric" data-testid={testId}>
     <div className="sim-metric-header">
       <Icon size={13} color={color} />
       <span className="sim-metric-label">{label}</span>
@@ -117,8 +119,8 @@ export const StatsPanel = () => {
   const statusCfg = STATUS_CONFIG[status]
 
   return (
-    <div className="sim-stats">
-      <h3 className="sim-stats-title">METRICAS_TIEMPO_REAL</h3>
+    <div className="sim-stats" data-testid="simulation-stats-panel">
+      <h3 className="sim-stats-title">Indicadores de la simulación</h3>
 
       {/* Status indicator - semáforo */}
       <div className="sim-status-indicator">
@@ -131,19 +133,28 @@ export const StatsPanel = () => {
       {/* Total agentes */}
       <Metric
         icon={Users}
-        label="Total Agentes"
+        label="Personas en el área simulada"
         value={totalAgentes.toLocaleString()}
         color="var(--color-accent)"
-        sub={`${celdasOcupadas} celdas ocupadas`}
+        sub={`Distribuidas en ${celdasOcupadas} zonas del mapa`}
+        testId="stats-total-population"
       />
 
-      {/* Max densidad */}
+      {/* Concentración máxima — semáforo de nivel */}
       <Metric
         icon={TrendingUp}
-        label="Densidad Maxima"
-        value={maxDensidad}
-        color="#ef4444"
-        sub="agentes en celda mas densa"
+        label="Concentración máxima"
+        value={maxDensidad > 0 ? maxDensidad.toFixed(2) : '—'}
+        color={maxDensidad > 0.7 ? '#ef4444' : maxDensidad > 0.4 ? '#f97316' : '#22c55e'}
+        sub={
+          maxDensidad > 0.7
+            ? '⚠ Concentración crítica — requiere atención'
+            : maxDensidad > 0.4
+            ? '↑ Concentración moderada — dentro del rango esperado'
+            : maxDensidad > 0
+            ? '✓ Concentración baja — distribución equilibrada'
+            : 'Sin datos — inicia la simulación'
+        }
       />
 
       {/* Celdas ocupadas + generación en una fila */}
@@ -151,14 +162,14 @@ export const StatsPanel = () => {
         <div className="sim-metric sim-metric-half">
           <div className="sim-metric-header">
             <Grid3X3 size={13} color="#d4af37" />
-            <span className="sim-metric-label">Celdas Ocupadas</span>
+            <span className="sim-metric-label">Zonas con presencia</span>
           </div>
           <p className="sim-metric-value">{celdasOcupadas}</p>
         </div>
         <div className="sim-metric sim-metric-half">
           <div className="sim-metric-header">
             <Activity size={13} color="#22c55e" />
-            <span className="sim-metric-label">Generacion</span>
+            <span className="sim-metric-label">Paso de tiempo</span>
           </div>
           <p className="sim-metric-value">{currentGeneration}</p>
         </div>
@@ -168,12 +179,12 @@ export const StatsPanel = () => {
       <div className="sim-metric">
         <div className="sim-metric-header">
           <Database size={13} color="#64748b" />
-          <span className="sim-metric-label">Distribucion Urbana</span>
+          <span className="sim-metric-label">Distribución de la población</span>
         </div>
         <div className="sim-urban-rows">
           <div className="sim-urban-row">
             <Zap size={11} color="#00d9ff" />
-            <span className="sim-urban-label">En transito</span>
+            <span className="sim-urban-label">Desplazándose</span>
             <span className="sim-urban-value" style={{ color: '#00d9ff' }}>
               {enTransito}
               <span className="sim-urban-pct">{pct(enTransito)}</span>
@@ -181,7 +192,7 @@ export const StatsPanel = () => {
           </div>
           <div className="sim-urban-row">
             <Utensils size={11} color="#22c55e" />
-            <span className="sim-urban-label">En comedor</span>
+            <span className="sim-urban-label">En comedor comunitario</span>
             <span className="sim-urban-value" style={{ color: '#22c55e' }}>
               {enComedor}
               <span className="sim-urban-pct">{pct(enComedor)}</span>
@@ -189,7 +200,7 @@ export const StatsPanel = () => {
           </div>
           <div className="sim-urban-row">
             <Home size={11} color="#d4af37" />
-            <span className="sim-urban-label">En cambuche</span>
+            <span className="sim-urban-label">En albergue/cambuche</span>
             <span className="sim-urban-value" style={{ color: '#d4af37' }}>
               {enCambuche}
               <span className="sim-urban-pct">{pct(enCambuche)}</span>
@@ -197,7 +208,7 @@ export const StatsPanel = () => {
           </div>
           <div className="sim-urban-row">
             <AlertTriangle size={11} color="#f97316" />
-            <span className="sim-urban-label">Zona consumo</span>
+            <span className="sim-urban-label">En zona de consumo</span>
             <span className="sim-urban-value" style={{ color: '#f97316' }}>
               {zonaConsumo}
               <span className="sim-urban-pct">{pct(zonaConsumo)}</span>
@@ -205,7 +216,7 @@ export const StatsPanel = () => {
           </div>
           <div className="sim-urban-row">
             <AlertTriangle size={11} color="#ef4444" />
-            <span className="sim-urban-label">Zona repulsora</span>
+            <span className="sim-urban-label">En zona repulsora</span>
             <span className="sim-urban-value" style={{ color: '#ef4444' }}>
               {zonaRepulsora}
               <span className="sim-urban-pct">{pct(zonaRepulsora)}</span>
@@ -218,7 +229,7 @@ export const StatsPanel = () => {
       <div className="sim-metric" style={{ flex: 1, minHeight: 160 }}>
         <div className="sim-metric-header">
           <Activity size={13} color="#64748b" />
-          <span className="sim-metric-label">Evolucion de Agentes</span>
+          <span className="sim-metric-label">Evolución de la población simulada (personas)</span>
         </div>
 
         {hasData && history.length > 1 ? (
@@ -235,7 +246,7 @@ export const StatsPanel = () => {
               <Line
                 type="monotone"
                 dataKey="total_agentes"
-                name="Total"
+                name="Total personas"
                 stroke="#00d9ff"
                 strokeWidth={2}
                 dot={false}
@@ -243,7 +254,7 @@ export const StatsPanel = () => {
               <Line
                 type="monotone"
                 dataKey="en_transito"
-                name="Transito"
+                name="Desplazándose"
                 stroke="#64748b"
                 strokeWidth={1}
                 strokeDasharray="4 4"
@@ -252,7 +263,7 @@ export const StatsPanel = () => {
               <Line
                 type="monotone"
                 dataKey="en_comedor"
-                name="Comedor"
+                name="En comedor"
                 stroke="#22c55e"
                 strokeWidth={1}
                 strokeDasharray="4 4"
@@ -262,7 +273,7 @@ export const StatsPanel = () => {
           </ResponsiveContainer>
         ) : (
           <div className="sim-spark-empty">
-            <p>Sin datos — inicia la simulacion</p>
+            <p>Sin datos aún — inicia la simulación para ver la evolución</p>
           </div>
         )}
       </div>

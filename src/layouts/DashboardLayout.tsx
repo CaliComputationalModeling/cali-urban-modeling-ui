@@ -7,7 +7,6 @@ import {
   Map as MapIcon,
   FileText,
   Shield,
-  ClipboardList,
   Settings2,
   MapPin,
   LogOut,

@@ -41,11 +41,16 @@ export const ObservationsPage = () => {
       return
     }
 
-    const res = await observationEndpoints.create({
+    const payload = {
       ...form,
       fecha_observacion: `${form.fecha_observacion || new Date().toISOString().slice(0, 16)}:00`,
       factores_detectados: factores,
-    })
+    }
+    console.log('Payload enviado:', payload)
+
+    const res = await observationEndpoints.create(payload)
+    console.log('Response status:', res.status)
+    console.log('Response body:', res.data)
     if (res.ok) {
       toast.success('Observacion creada')
       setForm(emptyForm)

@@ -1,5 +1,10 @@
 import { http } from '../http'
-import type { SimulationId } from '@/shared/contracts/simulation.contract'
+import type {
+  CreateSimulationRequest,
+  ExecutionInitResponse,
+  ExecutionStatusResponse,
+  SimulationId,
+} from '@/shared/contracts/simulation.contract'
 
 // ─── Tipos alineados con el backend (escenario_router.py) ─────────────────────
 
@@ -149,14 +154,12 @@ export const simulationEndpoints = {
     http.get<VersionEscenarioResponse>(`/api/versiones-escenario/${versionId}`),
 
   // 6. Ejecutar simulación → devuelve EjecucionSimulacionResponse (síncrono, incluye pasos)
-  createSimulation: (data: {
-    version_escenario_id: number
-    generaciones: number
-    radio_suavizado: number
-    movilidad: number
-    permanencia_base: number
-    sensibilidad_atractivo: number
-  }) => http.post<EjecucionSimulacionResponse>('/api/simulaciones/ejecutar', data),
+  createSimulation: (data: CreateSimulationRequest) =>
+    http.post<EjecucionSimulacionResponse | ExecutionInitResponse>('/api/simulaciones/ejecutar', data),
+
+  // 6.1. Estado de ejecución asíncrona
+  getSimulationStatus: (ejecucionId: SimulationId | number | string) =>
+    http.get<ExecutionStatusResponse>(`/api/simulaciones/${ejecucionId}/estado`),
 
   // 7. Obtener pasos de una ejecución
   getSimulationSteps: (ejecucionId: SimulationId | number) =>

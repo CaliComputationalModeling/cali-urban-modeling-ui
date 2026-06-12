@@ -54,7 +54,7 @@ export const LoginPage = () => {
           </p>
         </div>
 
-        <p className="footer-text">© 2025 SIMCORE — Todos los derechos reservados</p>
+        <p className="footer-text">© 2025 A — Todos los derechos reservados</p>
       </div>
 
       {/* Right Panel */}

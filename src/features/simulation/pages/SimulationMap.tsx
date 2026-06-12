@@ -2,87 +2,73 @@ import { useMemo, useEffect, useState } from 'react'
 import {
   MapContainer,
   TileLayer,
-  Marker,
   Popup,
   Polyline,
-  Rectangle,
+  GeoJSON,
+  CircleMarker,
   Tooltip,
 } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useSimulationStore } from '@/store/simulationStore'
+import { useMapsStore } from '@/store/mapsStore'
 import http from '@/services/http'
-import type { GeoJsonResponse } from '@/shared/contracts/simulation.contract'
+import type { PointOfInterest } from '@/shared/contracts/simulation.contract'
 import { mapsEndpoints } from '@/services/endpoints/maps.endpoints'
 import type { RutaMovilidad } from '@/services/endpoints/maps.endpoints'
+import { CanvasGridOverlay, type GridBounds } from '@/features/simulation/components/CanvasGridOverlay'
+import type { Feature, GeoJsonProperties, Geometry } from 'geojson'
 
 const LAT_MIN = 3.3
 const LAT_MAX = 3.55
 const LON_MIN = -76.6
 const LON_MAX = -76.45
-
-interface ActiveCell {
-  bounds: [[number, number], [number, number]]
-  x: number
-  y: number
-  agentes: number
-  densidad: number
-  ratio: number
+const MALLA_BOUNDS: GridBounds = { north: LAT_MAX, south: LAT_MIN, west: LON_MIN, east: LON_MAX }
+const COMUNAS_STYLE: L.PathOptions = {
+  color: 'rgba(255,255,255,0.35)',
+  weight: 1.5,
+  fillColor: 'rgba(255,255,255,0.02)',
+  fillOpacity: 0.02,
+  opacity: 0.9,
+  dashArray: '4,4',
 }
 
-function getCellColor(ratio: number): string {
-  const clamped = Math.min(Math.max(ratio, 0), 1)
-
-  if (clamped > 0.85) return '#f43f5e' // Rose 500 (Vivo)
-  if (clamped > 0.65) return '#fbbf24' // Amber 400
-  if (clamped > 0.45) return '#22c55e' // Green 500
-  if (clamped > 0.25) return '#0ea5e9' // Sky 500
-  return '#8b5cf6' // Violet 500
+function getComunaLabel(properties: GeoJsonProperties): string {
+  const rawValue = properties?.NUMERO_COMUNA ?? properties?.numero_comuna ?? properties?.comuna ?? properties?.COMUNA ?? properties?.nombre ?? properties?.NOMBRE
+  return rawValue ? `Comuna ${String(rawValue).replace(/^comuna\s+/i, '')}` : 'Comuna'
 }
 
-function getCellOpacity(ratio: number): number {
-  return 0.58 + Math.min(Math.max(ratio, 0), 1) * 0.34
-}
-
-const POI_ICONS: Record<string, { emoji: string; color: string }> = {
-  comedor_social: { emoji: '🍽', color: '#22c55e' },
-  cambuche: { emoji: '🏕', color: '#d4af37' },
-  zona_consumo: { emoji: '⚠', color: '#f97316' },
-  zona_patrullaje: { emoji: '🚔', color: '#ef4444' },
-  parque_publico: { emoji: '🌳', color: '#86efac' },
-  hospital_cai: { emoji: '🏥', color: '#f43f5e' },
-}
-
-const makePOIIcon = (tipo: string) => {
-  const def = POI_ICONS[tipo] || { emoji: '📍', color: '#94a3b8' }
-
-  return L.divIcon({
-    html: `<div style="font-size:16px;line-height:1;filter:drop-shadow(0 0 4px ${def.color})">${def.emoji}</div>`,
-    className: '',
-    iconSize: [20, 20],
-    iconAnchor: [10, 10],
+function bindComunaTooltip(feature: Feature<Geometry, GeoJsonProperties>, layer: L.Layer) {
+  layer.bindTooltip(getComunaLabel(feature.properties), {
+    permanent: false,
+    direction: 'center',
+    className: 'comuna-tooltip',
   })
 }
 
 export const SimulationMap = () => {
-  const geojson = useSimulationStore((s) => s.geojson)
   const currentGeneration = useSimulationStore((s) => s.currentGeneration)
   const simulationId = useSimulationStore((s) => s.simulationId)
   const loadedPasos = useSimulationStore((s) => s.loadedPasos)
+  const showAgentsLayer = useSimulationStore((s) => s.showAgentsLayer)
+  const showAttractorsLayer = useSimulationStore((s) => s.showAttractorsLayer)
+  const toggleAgentsLayer = useSimulationStore((s) => s.toggleAgentsLayer)
+  const toggleAttractorsLayer = useSimulationStore((s) => s.toggleAttractorsLayer)
+  const showComunasLayer = useMapsStore((s) => s.showComunasLayer)
+  const comunasGeoJson = useMapsStore((s) => s.comunasGeoJson)
+  const toggleComunasLayer = useMapsStore((s) => s.toggleComunasLayer)
+  const fetchComunasGeoJson = useMapsStore((s) => s.fetchComunasGeoJson)
 
   const caliCoords: [number, number] = [3.4372, -76.5225]
 
-  const [pois, setPois] = useState<Record<string, unknown>[]>([])
+  const [pois, setPois] = useState<PointOfInterest[]>([])
   const [routes, setRoutes] = useState<RutaMovilidad[]>([])
 
   const [selectedStep, setSelectedStep] = useState<number | null>(null)
 
-  const [timelineGeoJson, setTimelineGeoJson] =
-    useState<GeoJsonResponse | null>(null)
-
   useEffect(() => {
     http
-      .get<{ pois: Record<string, unknown>[] }>('/observations/pois')
+      .get<{ pois: PointOfInterest[] }>('/observations/pois')
       .then((res) => {
         if (res.ok && res.data?.pois) {
           setPois(res.data.pois)
@@ -90,6 +76,10 @@ export const SimulationMap = () => {
       })
       .catch(() => null)
   }, [])
+
+  useEffect(() => {
+    if (showComunasLayer) fetchComunasGeoJson().catch(() => null)
+  }, [fetchComunasGeoJson, showComunasLayer])
 
   useEffect(() => {
     if (!simulationId) return
@@ -104,134 +94,24 @@ export const SimulationMap = () => {
       .catch(() => null)
   }, [simulationId])
 
-  useEffect(() => {
-    if (selectedStep === null || !loadedPasos[selectedStep]) {
-      setTimelineGeoJson(null)
-      return
-    }
+  const liveStepIndex = useMemo(() => {
+    const index = loadedPasos.findIndex((paso) => paso.tiempo === currentGeneration)
+    return index >= 0 ? index : 0
+  }, [currentGeneration, loadedPasos])
 
-    const paso = loadedPasos[selectedStep]
+  const currentMatrix = useMemo(() => {
+    const step = selectedStep !== null ? loadedPasos[selectedStep] : loadedPasos[liveStepIndex]
+    if (!step) return null
+    return step.densidad
+  }, [liveStepIndex, loadedPasos, selectedStep])
 
-    const rows = paso.densidad.length
-    const cols = rows > 0 ? paso.densidad[0].length : 0
+  const maxDensity = useMemo(() => {
+    if (!currentMatrix || currentMatrix.length === 0) return 1
+    const values = currentMatrix.flat().filter(Number.isFinite)
+    return Math.max(...values) || 1
+  }, [currentMatrix])
 
-    const features = []
-
-    for (let i = 0; i < rows; i++) {
-      for (let j = 0; j < cols; j++) {
-        const densidad = paso.densidad[i][j] ?? 0
-
-        if (densidad <= 0) continue
-
-        const lat = LAT_MIN + (i / rows) * (LAT_MAX - LAT_MIN)
-        const lon = LON_MIN + (j / cols) * (LON_MAX - LON_MIN)
-
-        features.push({
-          type: 'Feature' as const,
-          properties: {
-            x: j,
-            y: i,
-            agentes: Math.round(densidad * 100),
-            densidad,
-            en_transito: 0,
-            en_comedor: 0,
-            en_cambuche: 0,
-            zona_consumo: 0,
-            zona_repulsora: 0,
-          },
-          geometry: {
-            type: 'Point' as const,
-            coordinates: [lon, lat] as [number, number],
-          },
-        })
-      }
-    }
-
-    setTimelineGeoJson({
-      type: 'FeatureCollection',
-      features,
-      metadata: {
-        generacion: paso.tiempo,
-        timestamp: new Date().toISOString(),
-        total_agentes: paso.total_poblacion,
-        max_densidad: 0,
-      },
-    })
-  }, [selectedStep, loadedPasos])
-
-  const activeCells = useMemo<ActiveCell[]>(() => {
-    const step =
-      selectedStep !== null
-        ? loadedPasos[selectedStep]
-        : loadedPasos.find((paso) => paso.tiempo === currentGeneration)
-
-    if (step) {
-      const rows = step.densidad.length
-      const cols = rows > 0 ? step.densidad[0].length : 0
-      const latStep = (LAT_MAX - LAT_MIN) / Math.max(rows, 1)
-      const lonStep = (LON_MAX - LON_MIN) / Math.max(cols, 1)
-      const occupied = []
-      let maxAgents = 0
-
-      for (let i = 0; i < rows; i++) {
-        for (let j = 0; j < cols; j++) {
-          const densidad = step.densidad[i]?.[j] ?? 0
-          if (densidad <= 0) continue
-
-          const agentes = Math.max(1, Math.round(densidad * 100))
-          if (agentes > maxAgents) maxAgents = agentes
-
-          occupied.push({
-            x: j,
-            y: i,
-            agentes,
-            densidad,
-            bounds: [
-              [LAT_MIN + i * latStep, LON_MIN + j * lonStep],
-              [LAT_MIN + (i + 1) * latStep, LON_MIN + (j + 1) * lonStep],
-            ] as [[number, number], [number, number]],
-          })
-        }
-      }
-
-      return occupied.map((cell) => ({
-        ...cell,
-        ratio: cell.agentes / Math.max(maxAgents, 1),
-      }))
-    }
-
-    const source = timelineGeoJson ?? geojson
-    if (!source) return []
-
-    const features = source.features.filter((f) => f.geometry !== null)
-    let maxAgents = 0
-
-    for (const feature of features) {
-      const agentes = (feature.properties?.agentes as number) ?? 0
-      if (agentes > maxAgents) maxAgents = agentes
-    }
-
-    return features.map((feature) => {
-      const x = (feature.properties?.x as number) ?? 0
-      const y = (feature.properties?.y as number) ?? 0
-      const agentes = (feature.properties?.agentes as number) ?? 0
-      const densidad = (feature.properties?.densidad as number) ?? 0
-      const [lon, lat] = feature.geometry.coordinates
-      const cellSize = 0.001
-
-      return {
-        x,
-        y,
-        agentes,
-        densidad,
-        ratio: agentes / Math.max(maxAgents, 1),
-        bounds: [
-          [lat - cellSize / 2, lon - cellSize / 2],
-          [lat + cellSize / 2, lon + cellSize / 2],
-        ],
-      }
-    })
-  }, [currentGeneration, geojson, loadedPasos, selectedStep, timelineGeoJson])
+  const timelineValue = selectedStep ?? liveStepIndex
 
   return (
     <div
@@ -258,24 +138,25 @@ export const SimulationMap = () => {
           attribution="&copy; CARTO"
         />
 
-        {/* Renderizado de celdas ocupadas como rectángulos vivos */}
-        {activeCells.map((cell) => (
-          <Rectangle
-            key={`cell-${cell.x}-${cell.y}-${selectedStep ?? 'live'}`}
-            bounds={cell.bounds}
-            pathOptions={{
-              fillColor: getCellColor(cell.ratio),
-              fillOpacity: getCellOpacity(cell.ratio),
-              stroke: false, // Esto hace que la malla vacía sea invisible
-            }}
-          >
-            <Tooltip sticky className="sim-tooltip">
-              <b>Celda [{cell.x},{cell.y}]</b><br/>
-              Agentes: {cell.agentes}<br/>
-              Densidad: {(cell.densidad * 100).toFixed(1)}%
-            </Tooltip>
-          </Rectangle>
-        ))}
+        {showComunasLayer && comunasGeoJson && (
+          <GeoJSON
+            data={comunasGeoJson}
+            style={COMUNAS_STYLE}
+            onEachFeature={bindComunaTooltip}
+          />
+        )}
+
+        {showAgentsLayer && (
+          <CanvasGridOverlay
+            bounds={MALLA_BOUNDS}
+            data={currentMatrix}
+            layerMode="density"
+            dataVersion={timelineValue}
+            maxValue={maxDensity}
+            enableProbabilityTooltip
+            orientation="mirrorX"
+          />
+        )}
 
         {routes.map((r, idx) => (
           <Polyline
@@ -295,43 +176,78 @@ export const SimulationMap = () => {
           />
         ))}
 
-        {pois
-          .filter(
-            (poi) =>
-              !!(poi.latitud as number) &&
-              !!(poi.longitud as number),
-          )
+        {showAttractorsLayer && pois
+          .filter((poi) => Number.isFinite(poi.latitud) && Number.isFinite(poi.longitud))
           .map((poi) => (
-            <Marker
-              key={poi.id as string}
-              position={[
-                poi.latitud as number,
-                poi.longitud as number,
+            <CircleMarker
+              key={String(poi.id)}
+              center={[
+                poi.latitud,
+                poi.longitud,
               ]}
-              icon={makePOIIcon(
-                poi.tipo_poi as string,
-              )}
+              radius={7 + Math.min(Number(poi.peso ?? 0), 4)}
+              pathOptions={{
+                color: '#e0f2fe',
+                fillColor: '#0ea5e9',
+                fillOpacity: 0.95,
+                opacity: 1,
+                weight: 1.5,
+              }}
             >
+              <Tooltip sticky className="sim-tooltip">
+                <b>Atractor</b><br />
+                {poi.nombre}<br />
+                {poi.tipo_poi}
+              </Tooltip>
               <Popup>
-                <b>{poi.nombre as string}</b>
+                <b>{poi.nombre}</b>
                 <br />
-                Tipo: {poi.tipo_poi as string}
+                Tipo: {poi.tipo_poi}
                 <br />
-                Peso: {poi.peso as number}
+                Peso: {poi.peso ?? '—'}
                 <br />
                 Radio:{' '}
-                {poi.radio_influencia as number} celdas
+                {poi.radio_influencia ?? '—'} celdas
               </Popup>
-            </Marker>
+            </CircleMarker>
           ))}
       </MapContainer>
+
+      <div className="sim-layer-toggle">
+        <button
+          className={showAgentsLayer ? 'active' : ''}
+          onClick={toggleAgentsLayer}
+        >
+          Ver Agentes
+        </button>
+        <button
+          className={showAttractorsLayer ? 'active' : ''}
+          onClick={toggleAttractorsLayer}
+        >
+          Ver Atractores
+        </button>
+        <button
+          className={showComunasLayer ? 'active' : ''}
+          onClick={toggleComunasLayer}
+        >
+          📍 Ver Comunas
+        </button>
+      </div>
+
+      <div className="sim-map-legend">
+        <p className="sim-map-legend-title">Leyenda</p>
+        <div><span style={{ background: '#fef08a' }} /> Baja densidad</div>
+        <div><span style={{ background: '#f97316' }} /> Media densidad</div>
+        <div><span style={{ background: '#b91c1c' }} /> Alta densidad</div>
+        <div><span style={{ background: '#0ea5e9' }} /> Atractores</div>
+      </div>
 
       {loadedPasos.length > 0 && (
         <div
           style={{
             position: 'absolute',
             left: 12,
-            bottom: 12,
+            bottom: 120,
             zIndex: 550,
             background: 'rgba(13,16,23,0.85)',
             padding: '8px 12px',
@@ -359,7 +275,7 @@ export const SimulationMap = () => {
             type="range"
             min={0}
             max={loadedPasos.length - 1}
-            value={selectedStep ?? currentGeneration}
+            value={timelineValue}
             onChange={(e) =>
               setSelectedStep(Number(e.target.value))
             }
@@ -386,7 +302,7 @@ export const SimulationMap = () => {
               minWidth: 100,
             }}
           >
-            Paso {selectedStep ?? currentGeneration} /{' '}
+            Paso {timelineValue} /{' '}
             {loadedPasos.length - 1}
           </span>
 

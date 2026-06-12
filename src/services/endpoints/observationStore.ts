@@ -53,7 +53,7 @@ export const useObservationStore = create<ObservationState>()(
         set({ isLoading: true });
         const response = await observationEndpoints.getAll({ usuario_id: userId });
         if (response.ok) {
-          set({ myObservations: response.data?.items || [], isLoading: false });
+          set({ myObservations: response.data ?? [], isLoading: false });
         } else {
           set({ isLoading: false });
         }

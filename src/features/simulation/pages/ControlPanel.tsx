@@ -76,6 +76,11 @@ export const ControlPanel = () => {
   const error = useSimulationStore((s) => s.error)
   const pollingStatus = useSimulationStore((s) => s.pollingStatus)
   const loadedPasos = useSimulationStore((s) => s.loadedPasos)
+  const simulationProgress = useSimulationStore((s) => s.simulationProgress)
+  const showAgentsLayer = useSimulationStore((s) => s.showAgentsLayer)
+  const showAttractorsLayer = useSimulationStore((s) => s.showAttractorsLayer)
+  const toggleAgentsLayer = useSimulationStore((s) => s.toggleAgentsLayer)
+  const toggleAttractorsLayer = useSimulationStore((s) => s.toggleAttractorsLayer)
 
   const isRunning = status === 'running'
   const hasSimulation = loadedPasos.length > 0
@@ -206,6 +211,18 @@ export const ControlPanel = () => {
         {pollingStatus && (
           <div style={{ padding: '10px', marginBottom: 8, backgroundColor: '#0f172a', border: '1px solid #1d4ed8', borderRadius: 4, textAlign: 'center', fontSize: '13px', color: '#60a5fa' }}>
             ⏳ {pollingStatus}
+            {simulationProgress && (
+              <div style={{ marginTop: 8, height: 6, background: '#1e293b', borderRadius: 999, overflow: 'hidden' }}>
+                <div
+                  style={{
+                    height: '100%',
+                    width: `${Math.min(Math.max(simulationProgress.progreso, 0), 100)}%`,
+                    background: '#60a5fa',
+                    transition: 'width 180ms linear',
+                  }}
+                />
+              </div>
+            )}
           </div>
         )}
 
@@ -244,6 +261,26 @@ export const ControlPanel = () => {
             <RotateCcw size={16} />
             <span>Reset</span>
           </button>
+        </div>
+
+        <div className="sim-control-divider" />
+
+        <div className="sim-speed-section">
+          <span className="sim-speed-title">CAPA</span>
+          <div className="sim-speed-selector">
+            <button
+              className={`sim-speed-option ${showAgentsLayer ? 'active' : ''}`}
+              onClick={toggleAgentsLayer}
+            >
+              Agentes
+            </button>
+            <button
+              className={`sim-speed-option ${showAttractorsLayer ? 'active' : ''}`}
+              onClick={toggleAttractorsLayer}
+            >
+              Atractores
+            </button>
+          </div>
         </div>
 
         <div className="sim-control-divider" />

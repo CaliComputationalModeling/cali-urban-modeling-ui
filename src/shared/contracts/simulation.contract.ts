@@ -138,6 +138,46 @@ export interface CreateSimulationResponse {
   progress?: number
 }
 
+export interface ExecutionInitResponse {
+  ejecucion_id: string | number
+  estado?: string
+  mensaje?: string
+  progreso?: number
+}
+
+export interface ExecutionStatusResponse {
+  ejecucion_id: string | number
+  estado: string
+  progreso: number
+  mensaje?: string
+  tiempo_actual?: number
+  total_pasos?: number
+}
+
+export interface PointOfInterest {
+  id: string | number
+  nombre: string
+  tipo_poi: string
+  latitud: number
+  longitud: number
+  peso?: number
+  radio_influencia?: number
+}
+
+export interface AttractorLayer {
+  type: 'FeatureCollection'
+  features: Array<{
+    type: 'Feature'
+    properties: PointOfInterest & Record<string, string | number | boolean | undefined>
+    geometry: {
+      type: 'Point'
+      coordinates: [number, number]
+    }
+  }>
+}
+
+export type SimulationLayerMode = 'density' | 'attraction'
+
 // ============================================
 // RULE WEIGHTS REQUEST
 // ============================================
@@ -246,6 +286,7 @@ export interface SimulationStoreState {
   error: string | null
   retryCount: number
   backendConnected: boolean
+  simulationProgress: ExecutionStatusResponse | null
 }
 
 // ============================================

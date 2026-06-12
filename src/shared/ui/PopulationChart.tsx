@@ -22,13 +22,32 @@ import { Card } from "@/shared/ui/Card"
 import { Button } from "@/shared/ui/Button"
 import { Trash2 } from "lucide-react"
 
+interface PopulationPoint {
+  generation: number
+  alive: number
+  dead: number
+  density: number
+}
+
+interface TooltipPayload {
+  name: string
+  color: string
+  value: number
+}
+
+interface TooltipProps {
+  active?: boolean
+  payload?: TooltipPayload[]
+  label?: string | number
+}
+
 // Tooltip personalizado para que muestre los datos bien formateados
-const CustomTooltip = ({ active, payload, label }: any) => {
+const CustomTooltip = ({ active, payload, label }: TooltipProps) => {
   if (!active || !payload?.length) return null
   return (
     <div className="bg-white border border-gray-200 rounded-lg shadow p-3 text-xs space-y-1">
       <p className="font-medium text-gray-700">Generación {label}</p>
-      {payload.map((entry: any) => (
+      {payload.map((entry) => (
         <p key={entry.name} style={{ color: entry.color }}>
           {entry.name}: {entry.value.toLocaleString()}
         </p>
@@ -38,7 +57,20 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 }
 
 export const PopulationChart = () => {
-  const { populationHistory, clearPopulationHistory, currentSimulation } = useSimulationStore()
+  const simulationId = useSimulationStore((s) => s.simulationId)
+  const history = useSimulationStore((s) => s.history)
+  const resetSimulation = useSimulationStore((s) => s.resetSimulation)
+
+  const populationHistory: PopulationPoint[] = history.map((point) => ({
+    generation: point.generacion,
+    alive: point.total_agentes,
+    dead: 0,
+    density: point.total_agentes > 0 ? point.total_agentes / Math.max(point.total_agentes, 1) : 0,
+  }))
+
+  const clearPopulationHistory = () => {
+    void resetSimulation()
+  }
 
   const isEmpty = populationHistory.length === 0
 
@@ -73,7 +105,7 @@ export const PopulationChart = () => {
         <div style={{ height: "260px" }}>
           {isEmpty ? (
             <div className="flex items-center justify-center h-full text-gray-400 text-sm">
-              {currentSimulation?.id
+              {simulationId
                 ? "Ejecuta pasos para ver la evolución de la población"
                 : "Carga una simulación primero"}
             </div>

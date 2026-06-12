@@ -13,6 +13,7 @@
 
 import { useEffect, useRef, useMemo } from "react"
 import { useSimulationStore } from "@/store/simulationStore"
+import type { Cell } from "@/shared/types/simulation.types"
 
 // Bounds por defecto: Cali, Colombia (coincide con tu geospatial_bounds)
 const DEFAULT_BOUNDS = {
@@ -27,7 +28,30 @@ export const MapView = () => {
   const mapInstanceRef = useRef<any>(null)
   const layerGroupRef = useRef<any>(null)
 
-  const { currentSimulation } = useSimulationStore()
+  const simulationId = useSimulationStore((s) => s.simulationId)
+  const currentGeneration = useSimulationStore((s) => s.currentGeneration)
+  const loadedPasos = useSimulationStore((s) => s.loadedPasos)
+
+  const currentStep = useMemo(
+    () => loadedPasos.find((paso) => paso.tiempo === currentGeneration) ?? loadedPasos[0],
+    [currentGeneration, loadedPasos],
+  )
+
+  const cells = useMemo<Cell[]>(() => {
+    if (!currentStep) return []
+    const result: Cell[] = []
+    for (let row = 0; row < currentStep.densidad.length; row++) {
+      for (let col = 0; col < (currentStep.densidad[row]?.length ?? 0); col++) {
+        if ((currentStep.densidad[row]?.[col] ?? 0) > 0) {
+          result.push({ position: { x: col, y: row }, state: 1 })
+        }
+      }
+    }
+    return result
+  }, [currentStep])
+
+  const width = currentStep?.densidad[0]?.length ?? 50
+  const height = currentStep?.densidad.length ?? 50
 
   // Calcular el centro del mapa desde los bounds
   const center = useMemo(() => ({
@@ -85,10 +109,6 @@ export const MapView = () => {
     import("leaflet").then((L) => {
       layerGroupRef.current.clearLayers()
 
-      const cells = currentSimulation?.cells ?? []
-const width = currentSimulation?.config?.gridConfig?.width ?? 50
-const height = currentSimulation?.config?.gridConfig?.height ?? 50
-
       const latRange = DEFAULT_BOUNDS.lat_max - DEFAULT_BOUNDS.lat_min
       const lonRange = DEFAULT_BOUNDS.lon_max - DEFAULT_BOUNDS.lon_min
 
@@ -128,14 +148,14 @@ const height = currentSimulation?.config?.gridConfig?.height ?? 50
         }).addTo(layerGroupRef.current)
       })
     })
-  }, [currentSimulation?.cells, currentSimulation?.config?.gridConfig?.width, currentSimulation?.config?.gridConfig?.height])
+  }, [cells, height, width])
 
   return (
     <div className="relative w-full rounded-lg overflow-hidden border border-gray-200" style={{ height: "420px" }}>
       <div ref={mapRef} className="w-full h-full" />
 
       {/* Overlay cuando no hay simulación */}
-      {!currentSimulation?.id && (
+      {!simulationId && (
         <div className="absolute inset-0 bg-white/80 flex items-center justify-center">
           <p className="text-gray-500 text-sm">Carga una simulación para ver las celdas en el mapa</p>
         </div>

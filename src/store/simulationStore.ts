@@ -6,6 +6,9 @@ import {
   type HistoryPoint,
   type GeoJsonResponse,
   type UrbanState,
+  type ExecutionInitResponse,
+  type ExecutionStatusResponse,
+  type SimulationLayerMode,
   createSimulationId,
   SPEED_OPTIONS,
   type CreateSimulationRequest,
@@ -79,6 +82,23 @@ function pasoToUrbanState(paso: PasoSimulacionDTO, isLast: boolean): UrbanState 
 let tickTimer: ReturnType<typeof setTimeout> | null = null
 function clearTick() { if (tickTimer !== null) { clearTimeout(tickTimer); tickTimer = null } }
 
+let pollingTimer: ReturnType<typeof setInterval> | null = null
+function clearPolling() { if (pollingTimer !== null) { clearInterval(pollingTimer); pollingTimer = null } }
+
+function isExecutionInit(data: unknown): data is ExecutionInitResponse {
+  return Boolean(data && typeof data === 'object' && 'ejecucion_id' in data)
+}
+
+function isCompletedStatus(status: string): boolean {
+  const normalized = status.toLowerCase()
+  return normalized === 'finalizado' || normalized === 'completed' || normalized === 'completado'
+}
+
+function isFailedStatus(status: string): boolean {
+  const normalized = status.toLowerCase()
+  return normalized === 'fallido' || normalized === 'failed' || normalized === 'error'
+}
+
 // ─── Store types ──────────────────────────────────────────────────────────────
 export interface SimulationStoreState {
   simulationId: SimulationId | null
@@ -94,10 +114,15 @@ export interface SimulationStoreState {
   retryCount: number
   backendConnected: boolean
   pollingStatus: string | null
+  simulationProgress: ExecutionStatusResponse | null
+  visualLayer: SimulationLayerMode
+  showAgentsLayer: boolean
+  showAttractorsLayer: boolean
   loadedPasos: PasoSimulacionDTO[]   // ← pasos cargados del backend
 
   createSimulation: (config: CreateSimulationFormData) => Promise<void>
   executeSimulationAsync: (payload: CreateSimulationRequest) => Promise<void>
+  startAsyncSimulation: (payload: CreateSimulationRequest) => Promise<void>
   setSimulationId: (id: SimulationId) => void
   disconnect: () => void
   startSimulation: () => void
@@ -106,6 +131,9 @@ export interface SimulationStoreState {
   resetSimulation: () => Promise<void>
   setSpeed: (ms: number) => void
   setMaxGenerations: (max: number) => void
+  setVisualLayer: (layer: SimulationLayerMode) => void
+  toggleAgentsLayer: () => void
+  toggleAttractorsLayer: () => void
 }
 
 const INITIAL_STATE = {
@@ -122,6 +150,10 @@ const INITIAL_STATE = {
   retryCount: 0,
   backendConnected: true,
   pollingStatus: null,
+  simulationProgress: null,
+  visualLayer: 'density' as SimulationLayerMode,
+  showAgentsLayer: true,
+  showAttractorsLayer: true,
   loadedPasos: [],
 }
 
@@ -156,62 +188,100 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
 
     // ── createSimulation: ejecuta y carga pasos ────────────────────────────────
     createSimulation: async (config: CreateSimulationFormData) => {
-      set({ error: null, pollingStatus: 'Ejecutando simulación...' })
-      try {
-        const res = await simulationEndpoints.createSimulation({
-          version_escenario_id: config.version_escenario_id,
-          generaciones: config.generaciones,
-          radio_suavizado: config.radio_suavizado,
-          movilidad: config.movilidad,
-          permanencia_base: config.permanencia_base,
-          sensibilidad_atractivo: config.sensibilidad_atractivo,
-        })
-
-        if (!res.ok) {
-          set({ error: res.status === 403 ? 'Sin permisos' : formatBackendDetail(res.data, 'Error al crear simulación'), pollingStatus: null, backendConnected: true })
-          return
-        }
-        if (!res.data) { set({ error: 'Respuesta vacía', pollingStatus: null }); return }
-
-        const ejecucion = res.data as EjecucionSimulacionResponse
-        currentPasoIndex = 0
-
-        set({
-          simulationId: createSimulationId(String(ejecucion.id)),
-          ejecucionId: String(ejecucion.id),
-          loadedPasos: ejecucion.pasos,
-          maxGenerations: ejecucion.pasos.length,
-          status: 'idle',
-          currentGeneration: 0,
-          geojson: null,
-          urbanState: null,
-          history: [],
-          error: null,
-          retryCount: 0,
-          backendConnected: true,
-          pollingStatus: null,
-        })
-      } catch (err) {
-        set({ error: `Error: ${err instanceof Error ? err.message : 'Desconocido'}`, pollingStatus: null, backendConnected: false })
-      }
+      await get().startAsyncSimulation({
+        version_escenario_id: config.version_escenario_id,
+        generaciones: config.generaciones,
+        radio_suavizado: config.radio_suavizado,
+        movilidad: config.movilidad,
+        permanencia_base: config.permanencia_base,
+        sensibilidad_atractivo: config.sensibilidad_atractivo,
+      })
     },
 
     // ── executeSimulationAsync: mismo flujo, usado por ExecutionModal ──────────
     executeSimulationAsync: async (payload: CreateSimulationRequest) => {
-      set({ error: null, pollingStatus: 'Ejecutando simulación...', ejecucionId: null })
+      await get().startAsyncSimulation(payload)
+    },
+
+    startAsyncSimulation: async (payload: CreateSimulationRequest) => {
+      clearTick()
+      clearPolling()
+      currentPasoIndex = 0
+      set({
+        error: null,
+        pollingStatus: 'Iniciando simulación...',
+        simulationProgress: null,
+        ejecucionId: null,
+        simulationId: null,
+        status: 'idle',
+        currentGeneration: 0,
+        geojson: null,
+        urbanState: null,
+        history: [],
+        loadedPasos: [],
+      })
+
       try {
         const res = await simulationEndpoints.createSimulation(payload)
 
         if (!res.ok) {
           if (res.status === 403) { set({ error: 'Sin permisos', pollingStatus: null, backendConnected: true }); return }
           if (res.status === 422 || res.status === 400) { set({ error: formatBackendDetail(res.data, 'Error de validación'), pollingStatus: null, backendConnected: true }); return }
-          throw new Error(formatBackendDetail(res.data, 'Error al ejecutar simulación'))
+          throw new Error(formatBackendDetail(res.data, 'Error al iniciar simulación'))
         }
         if (!res.data) throw new Error('Respuesta vacía del servidor')
 
-        const ejecucion = res.data as EjecucionSimulacionResponse
-        currentPasoIndex = 0
+        if (isExecutionInit(res.data)) {
+          const executionId = String(res.data.ejecucion_id)
+          set({
+            simulationId: createSimulationId(executionId),
+            ejecucionId: executionId,
+            status: 'idle',
+            pollingStatus: res.data.mensaje ?? 'Simulación en ejecución...',
+            simulationProgress: {
+              ejecucion_id: executionId,
+              estado: res.data.estado ?? 'pendiente',
+              progreso: res.data.progreso ?? 0,
+              mensaje: res.data.mensaje,
+            },
+            retryCount: 0,
+            backendConnected: true,
+          })
 
+          pollingTimer = setInterval(() => {
+            void (async () => {
+              const statusRes = await simulationEndpoints.getSimulationStatus(executionId)
+              if (!statusRes.ok || !statusRes.data) {
+                set({ backendConnected: false, pollingStatus: 'Esperando respuesta del backend...' })
+                return
+              }
+
+              const progress = statusRes.data
+              set({
+                backendConnected: true,
+                simulationProgress: progress,
+                pollingStatus: progress.mensaje ?? `Progreso ${Math.round(progress.progreso)}%`,
+              })
+
+              if (isFailedStatus(progress.estado)) {
+                clearPolling()
+                set({ status: 'error', error: progress.mensaje ?? 'La simulación falló', pollingStatus: null })
+                return
+              }
+
+              if (isCompletedStatus(progress.estado)) {
+                clearPolling()
+                set({ pollingStatus: 'Cargando pasos de simulación...' })
+                await loadPasosIntoStore(executionId, set)
+                set({ pollingStatus: null, simulationProgress: { ...progress, progreso: 100 }, status: 'idle' })
+              }
+            })()
+          }, 1000)
+
+          return
+        }
+
+        const ejecucion = res.data as EjecucionSimulacionResponse
         set({
           simulationId: createSimulationId(String(ejecucion.id)),
           ejecucionId: String(ejecucion.id),
@@ -226,21 +296,25 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
           retryCount: 0,
           backendConnected: true,
           pollingStatus: null,
+          simulationProgress: null,
         })
       } catch (err) {
-        set({ error: `Error: ${err instanceof Error ? err.message : 'Desconocido'}`, pollingStatus: null, backendConnected: false })
+        set({ error: `Error: ${err instanceof Error ? err.message : 'Desconocido'}`, pollingStatus: null, backendConnected: false, status: 'error' })
       }
     },
 
     // ── setSimulationId: conectar a ejecución existente y cargar sus pasos ─────
     setSimulationId: (id: SimulationId) => {
+      clearPolling()
       currentPasoIndex = 0
-      set({ simulationId: id, ejecucionId: String(id), status: 'idle', currentGeneration: 0, geojson: null, urbanState: null, history: [], loadedPasos: [], error: null, retryCount: 0, backendConnected: true })
+      set({ simulationId: id, ejecucionId: String(id), status: 'idle', currentGeneration: 0, geojson: null, urbanState: null, history: [], loadedPasos: [], error: null, retryCount: 0, backendConnected: true, pollingStatus: 'Cargando pasos de simulación...', simulationProgress: null })
       loadPasosIntoStore(String(id), set).catch(() => null)
+        .finally(() => set({ pollingStatus: null }))
     },
 
     disconnect: () => {
       clearTick()
+      clearPolling()
       currentPasoIndex = 0
       set({ ...INITIAL_STATE })
     },
@@ -299,7 +373,7 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
     resetSimulation: async () => {
       clearTick()
       currentPasoIndex = 0
-      set({ status: 'idle', currentGeneration: 0, geojson: null, urbanState: null, history: [], error: null, retryCount: 0 })
+      set({ status: 'idle', currentGeneration: 0, geojson: null, urbanState: null, history: [], error: null, retryCount: 0, simulationProgress: null })
     },
 
     setSpeed: (ms: number) => {
@@ -309,6 +383,18 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
 
     setMaxGenerations: (max: number) => {
       set({ maxGenerations: Math.max(1, max) })
+    },
+
+    setVisualLayer: (layer: SimulationLayerMode) => {
+      set({ visualLayer: layer })
+    },
+
+    toggleAgentsLayer: () => {
+      set((state) => ({ showAgentsLayer: !state.showAgentsLayer }))
+    },
+
+    toggleAttractorsLayer: () => {
+      set((state) => ({ showAttractorsLayer: !state.showAttractorsLayer }))
     },
   }
 })
