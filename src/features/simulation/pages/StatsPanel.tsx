@@ -226,7 +226,7 @@ export const StatsPanel = () => {
       </div>
 
       {/* Gráfica de línea - evolución de agentes */}
-      <div className="sim-metric" style={{ flex: 1, minHeight: 160 }}>
+      <div className="sim-metric sim-chart-card">
         <div className="sim-metric-header">
           <Activity size={13} color="#64748b" />
           <span className="sim-metric-label">Evolución de la población simulada (personas)</span>

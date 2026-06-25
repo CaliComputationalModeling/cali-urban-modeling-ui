@@ -187,7 +187,7 @@ export const ControlPanel = () => {
       <div className="sim-control">
 
         {/* Acciones de administración */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+        <div className="sim-admin-actions" aria-label="Acciones de simulación">
           <button className="sim-btn-labeled" onClick={() => setShowRuleEditor(true)}>
             Editar Reglas
           </button>

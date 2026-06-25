@@ -52,6 +52,13 @@ class HttpClient {
     return headers
   }
 
+  private buildAuthHeaders(customHeaders?: HeadersInit): Record<string, string> {
+    const headers: Record<string, string> = { ...(customHeaders as Record<string, string>) }
+    const token = this.getAuthToken()
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    return headers
+  }
+
   private async request<T>(
     endpoint: string,
     config: RequestConfig = {}
@@ -111,6 +118,40 @@ class HttpClient {
       method: 'POST',
       body: JSON.stringify(body),
     })
+  }
+
+  async postForm<T>(endpoint: string, body: FormData, config: RequestConfig = {}): Promise<HttpResponse<T>> {
+    const { params, responseType = 'auto', ...init } = config
+    const url = this.buildUrl(endpoint, params)
+    const hadToken = Boolean(this.getAuthToken())
+
+    try {
+      const response = await fetch(url, {
+        ...init,
+        method: 'POST',
+        body,
+        headers: this.buildAuthHeaders(init.headers),
+        credentials: 'include',
+      })
+
+      if (response.status === 401 && hadToken) this.unauthorizedHandler?.()
+
+      const contentType = response.headers.get('content-type') ?? ''
+      let data: T = null as T
+      const shouldParseJson = responseType === 'json' || (responseType === 'auto' && contentType.includes('application/json'))
+      if (shouldParseJson) data = (await response.json()) as T
+      else if (responseType === 'text') data = (await response.text()) as T
+
+      return { data, status: response.status, ok: response.ok, headers: response.headers }
+    } catch (error) {
+      console.error('[HTTP_CLIENT_ERROR]:', error)
+      return {
+        data: { detail: 'Error de red o conexión rechazada' } as unknown as T,
+        status: 500,
+        ok: false,
+        headers: new Headers(),
+      }
+    }
   }
 
   async postBlob(

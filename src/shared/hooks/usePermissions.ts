@@ -23,7 +23,7 @@ export function usePermissions() {
 
   const canManageUsers = hasRole(UserRole.ADMIN)
   const canViewSimulations = hasMinRole(UserRole.TECHNICIAN)
-  const canViewReports = hasMinRole(UserRole.FOUNDATION_HEAD)
+  const canViewReports = hasRole(UserRole.COORDINATOR, UserRole.FOUNDATION_HEAD)
   const canViewAudit = hasRole(UserRole.ADMIN, UserRole.COORDINATOR)
   // Según RBAC solicitado: Jefe de Fundación ve Dashboards y Reportes (no Cartografía por defecto)
   const canViewMaps = hasRole(UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FIELD_WORKER)

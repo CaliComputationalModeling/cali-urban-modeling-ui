@@ -243,21 +243,7 @@ export const SimulationMap = () => {
       </div>
 
       {loadedPasos.length > 0 && (
-        <div
-          style={{
-            position: 'absolute',
-            left: 12,
-            bottom: 120,
-            zIndex: 550,
-            background: 'rgba(13,16,23,0.85)',
-            padding: '8px 12px',
-            borderRadius: 8,
-            color: '#fff',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-          }}
-        >
+        <div className="sim-timeline-control" aria-label="Control de pasos de simulación">
           <button
             onClick={() =>
               setSelectedStep((s) =>
@@ -271,15 +257,15 @@ export const SimulationMap = () => {
             ◀
           </button>
 
-          <input
-            type="range"
+            <input
+              type="range"
             min={0}
             max={loadedPasos.length - 1}
             value={timelineValue}
             onChange={(e) =>
               setSelectedStep(Number(e.target.value))
             }
-            style={{ width: 140 }}
+            className="sim-timeline-range"
           />
 
           <button
@@ -295,13 +281,7 @@ export const SimulationMap = () => {
             ▶
           </button>
 
-          <span
-            style={{
-              fontSize: 12,
-              color: '#94a3b8',
-              minWidth: 100,
-            }}
-          >
+          <span className="sim-timeline-label">
             Paso {timelineValue} /{' '}
             {loadedPasos.length - 1}
           </span>

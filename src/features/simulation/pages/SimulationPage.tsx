@@ -59,17 +59,7 @@ export const SimulationPage = () => {
 
       {/* ── Guía de inicio (visible solo cuando no hay simulación activa) ── */}
       {status === 'idle' && !urbanState && (
-        <div
-          style={{
-            display: 'flex',
-            gap: 12,
-            padding: '14px 20px',
-            background: 'rgba(30,41,59,0.6)',
-            border: '1px solid rgba(99,102,241,0.25)',
-            borderRadius: 12,
-            marginBottom: 8,
-          }}
-        >
+        <div className="sim-start-guide" aria-label="Guía de inicio de simulación">
           {(['1', '2', '3'] as const).map((n, i) => {
             const steps = [
               { num: '1', title: 'Selecciona un escenario', desc: 'Elige un escenario predefinido o configura los parámetros manualmente en el formulario de abajo.' },
@@ -78,14 +68,14 @@ export const SimulationPage = () => {
             ]
             const step = steps[i]
             return (
-              <div key={n} style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, borderRadius: '50%', background: '#6366f1', color: '#fff', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+              <div key={n} className="sim-start-step">
+                <div className="sim-start-step-title">
+                  <span className="sim-start-step-number">
                     {step.num}
                   </span>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>{step.title}</span>
+                  <span>{step.title}</span>
                 </div>
-                <p style={{ fontSize: 12, color: '#94a3b8', margin: 0, lineHeight: 1.5 }}>{step.desc}</p>
+                <p>{step.desc}</p>
               </div>
             )
           })}

@@ -39,7 +39,7 @@ export const useObservationStore = create<ObservationState>()(
           } else {
             throw new Error("Error en servidor");
           }
-        } catch (error) {
+        } catch {
           // MODO OFFLINE: Si falla la red, guardamos en pendientes
           set(state => ({
             pendingSync: [...state.pendingSync, data],

@@ -33,7 +33,7 @@ const menuItems = [
     icon: LayoutDashboard,
     label: 'Panel Control',
     section: 'PRINCIPAL',
-    roles: [UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FOUNDATION_HEAD, UserRole.FIELD_WORKER],
+    roles: [UserRole.COORDINATOR, UserRole.FOUNDATION_HEAD],
   },
   {
     path: '/users',
@@ -82,7 +82,7 @@ const menuItems = [
     icon: FileText,
     label: 'Reportes',
     section: 'ANÁLISIS',
-    roles: [UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FOUNDATION_HEAD],
+    roles: [UserRole.COORDINATOR, UserRole.FOUNDATION_HEAD],
   },
   {
     path: '/audit',

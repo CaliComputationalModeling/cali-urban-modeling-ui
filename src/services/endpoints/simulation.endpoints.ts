@@ -85,6 +85,17 @@ export interface EjecucionSimulacionResponse {
   pasos: PasoSimulacionDTO[]
 }
 
+export type SimulationExecutionStatus = 'en_proceso' | 'finalizado' | 'fallido'
+
+export interface SimulationExecutionSummary {
+  id: number
+  version_escenario_id: number
+  estado: SimulationExecutionStatus
+  tiempo_actual: number
+  fecha_inicio?: string
+  fecha_fin?: string
+}
+
 // Lo que devuelve GET /api/simulaciones/{id}/zonas-criticas → ZonasCriticasResponse
 export interface CeldaCritica {
   i: number
@@ -160,6 +171,15 @@ export const simulationEndpoints = {
   // 6.1. Estado de ejecución asíncrona
   getSimulationStatus: (ejecucionId: SimulationId | number | string) =>
     http.get<ExecutionStatusResponse>(`/api/simulaciones/${ejecucionId}/estado`),
+
+  listSimulations: (params: { estado?: SimulationExecutionStatus; limit?: number; offset?: number } = {}) =>
+    http.get<SimulationExecutionSummary[]>('/api/simulaciones', {
+      params: Object.fromEntries(
+        Object.entries(params)
+          .filter(([, value]) => value !== undefined)
+          .map(([key, value]) => [key, String(value)])
+      ),
+    }),
 
   // 7. Obtener pasos de una ejecución
   getSimulationSteps: (ejecucionId: SimulationId | number) =>
