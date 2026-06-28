@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { observationEndpoints } from '@/services/endpoints';
+import { useAuthStore } from '@/store/authStore';
 import type { Observation, ObservationCreate } from '@/shared/types/observation.types';
 import { toast } from 'sonner';
 
@@ -63,6 +64,12 @@ export const useObservationStore = create<ObservationState>()(
         const { pendingSync, isSyncing } = get();
         if (pendingSync.length === 0 || isSyncing) return;
 
+        const userId = useAuthStore.getState().user?.id;
+        if (!userId) {
+          toast.warning('No se pudo identificar el usuario actual para sincronizar.');
+          return;
+        }
+
         set({ isSyncing: true });
         toast.info(`Sincronizando ${pendingSync.length} observaciones pendientes...`);
 
@@ -81,8 +88,7 @@ export const useObservationStore = create<ObservationState>()(
         if (successfulSyncs.length > 0) {
           toast.success(`${successfulSyncs.length} observaciones sincronizadas correctamente`);
           // Refrescar lista
-          const userId = Number(localStorage.getItem('user_id'));
-          if (userId) get().fetchMyObservations(userId);
+          get().fetchMyObservations(userId);
         }
       }
     }),

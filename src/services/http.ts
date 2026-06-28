@@ -1,7 +1,5 @@
 const API_BASE_URL = 'http://localhost:8000'
 
-export const AUTH_TOKEN_KEY = 'auth_token'
-
 interface RequestConfig extends RequestInit {
   params?: Record<string, string>
   responseType?: 'auto' | 'json' | 'blob' | 'arrayBuffer' | 'text'
@@ -26,10 +24,6 @@ class HttpClient {
     this.unauthorizedHandler = handler
   }
 
-  private getAuthToken(): string | null {
-    return localStorage.getItem(AUTH_TOKEN_KEY)
-  }
-
   private buildUrl(endpoint: string, params?: Record<string, string>): string {
     let url = `${this.baseUrl}${endpoint}`
     if (params) {
@@ -44,18 +38,6 @@ class HttpClient {
       ...(customHeaders as Record<string, string>),
     }
 
-    const token = this.getAuthToken()
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`
-    }
-
-    return headers
-  }
-
-  private buildAuthHeaders(customHeaders?: HeadersInit): Record<string, string> {
-    const headers: Record<string, string> = { ...(customHeaders as Record<string, string>) }
-    const token = this.getAuthToken()
-    if (token) headers['Authorization'] = `Bearer ${token}`
     return headers
   }
 
@@ -65,7 +47,6 @@ class HttpClient {
   ): Promise<HttpResponse<T>> {
     const { params, responseType = 'auto', ...init } = config
     const url = this.buildUrl(endpoint, params)
-    const hadToken = Boolean(this.getAuthToken())
     const headers = this.buildHeaders(init.headers)
 
     try {
@@ -75,7 +56,7 @@ class HttpClient {
         credentials: 'include',
       })
 
-      if (response.status === 401 && hadToken) {
+      if (response.status === 401) {
         this.unauthorizedHandler?.()
       }
 
@@ -123,18 +104,17 @@ class HttpClient {
   async postForm<T>(endpoint: string, body: FormData, config: RequestConfig = {}): Promise<HttpResponse<T>> {
     const { params, responseType = 'auto', ...init } = config
     const url = this.buildUrl(endpoint, params)
-    const hadToken = Boolean(this.getAuthToken())
 
     try {
       const response = await fetch(url, {
         ...init,
         method: 'POST',
         body,
-        headers: this.buildAuthHeaders(init.headers),
+        headers: init.headers,
         credentials: 'include',
       })
 
-      if (response.status === 401 && hadToken) this.unauthorizedHandler?.()
+      if (response.status === 401) this.unauthorizedHandler?.()
 
       const contentType = response.headers.get('content-type') ?? ''
       let data: T = null as T

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import http, { AUTH_TOKEN_KEY } from '@/services/http'
+import http from '@/services/http'
 import type { User } from '@/shared/types/user.types'
 import type { LoginCredentials, LoginResponse } from '@/shared/types/auth.types'
 
@@ -20,6 +20,9 @@ function extractErrorMessage(data: unknown): string {
   if (data && typeof data === 'object' && 'detail' in data) {
     return String((data as { detail: unknown }).detail)
   }
+  if (data && typeof data === 'object' && 'message' in data) {
+    return String((data as { message: unknown }).message)
+  }
   return 'Error inesperado del servidor'
 }
 
@@ -32,22 +35,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   initialize: async () => {
     http.onUnauthorized(() => get().clearSession())
 
-    const token = localStorage.getItem(AUTH_TOKEN_KEY)
-    if (!token) {
-      set({ isLoading: false })
-      return
-    }
-
     const response = await http.get<User>('/auth/me')
     if (response.ok) {
       set({
         user: response.data,
         isAuthenticated: true,
         isLoading: false,
+        error: null,
       })
     } else {
-      localStorage.removeItem(AUTH_TOKEN_KEY)
-      set({ isLoading: false })
+      get().clearSession()
     }
   },
 
@@ -63,12 +60,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return
     }
 
-    const { access_token } = response.data
-    localStorage.setItem(AUTH_TOKEN_KEY, access_token)
-
     const userResponse = await http.get<User>('/auth/me')
     if (!userResponse.ok) {
-      localStorage.removeItem(AUTH_TOKEN_KEY)
+      get().clearSession()
       set({
         isLoading: false,
         error: 'No se pudo obtener la información del usuario',
@@ -80,6 +74,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       user: userResponse.data,
       isAuthenticated: true,
       isLoading: false,
+      error: null,
     })
   },
 
@@ -89,9 +84,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   clearSession: () => {
-    localStorage.removeItem(AUTH_TOKEN_KEY)
-    localStorage.removeItem('user_role')
-    localStorage.removeItem('user_id')
     set({
       user: null,
       isAuthenticated: false,

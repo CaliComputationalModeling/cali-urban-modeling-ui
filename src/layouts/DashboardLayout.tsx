@@ -24,7 +24,7 @@ const ROLE_NAMES: Record<number, string> = {
   2: 'Coordinador Técnico',
   3: 'Equipo Técnico',
   4: 'Jefe de Fundación',
-  5: 'Campo',
+  5: 'Trabajador de campo',
 }
 
 const menuItems = [
@@ -33,21 +33,21 @@ const menuItems = [
     icon: LayoutDashboard,
     label: 'Panel Control',
     section: 'PRINCIPAL',
-    roles: [UserRole.COORDINATOR, UserRole.FOUNDATION_HEAD],
+    roles: [UserRole.ADMIN, UserRole.COORDINATOR, UserRole.FOUNDATION_HEAD],
   },
   {
     path: '/users',
     icon: Users,
     label: 'Operadores',
     section: 'PRINCIPAL',
-    roles: [UserRole.ADMIN, UserRole.COORDINATOR],
+    roles: [UserRole.ADMIN],
   },
   {
     path: '/roles',
     icon: Shield,
     label: 'Roles',
     section: 'PRINCIPAL',
-    roles: [UserRole.ADMIN, UserRole.COORDINATOR],
+    roles: [UserRole.ADMIN],
   },
   {
     path: '/observations',
@@ -61,35 +61,28 @@ const menuItems = [
     icon: Settings2,
     label: 'Escenarios',
     section: 'OPERACIONES',
-    roles: [UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN],
+    roles: [UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FOUNDATION_HEAD],
   },
   {
     path: '/simulation',
     icon: Activity,
     label: 'Simulaciones',
     section: 'OPERACIONES',
-    roles: [UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN],
+    roles: [UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FOUNDATION_HEAD],
   },
   {
     path: '/maps',
     icon: MapIcon,
     label: 'Cartografía',
     section: 'OPERACIONES',
-    roles: [UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FIELD_WORKER],
+    roles: [UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FOUNDATION_HEAD, UserRole.FIELD_WORKER],
   },
   {
     path: '/reports',
     icon: FileText,
     label: 'Reportes',
     section: 'ANÁLISIS',
-    roles: [UserRole.COORDINATOR, UserRole.FOUNDATION_HEAD],
-  },
-  {
-    path: '/audit',
-    icon: Shield,
-    label: 'Auditoría',
-    section: 'ANÁLISIS',
-    roles: [UserRole.ADMIN, UserRole.COORDINATOR],
+    roles: [UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FOUNDATION_HEAD],
   },
 ]
 

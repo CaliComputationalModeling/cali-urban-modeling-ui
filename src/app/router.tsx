@@ -30,6 +30,7 @@ export const AppRouter = () => {
             <DashboardLayout>
                 <PermissionGate
                   allowedRoles={[
+                    UserRole.ADMIN,
                     UserRole.COORDINATOR,
                     UserRole.FOUNDATION_HEAD,
                   ]}
@@ -44,7 +45,7 @@ export const AppRouter = () => {
           path="/users"
           element={
             <DashboardLayout>
-              <PermissionGate allowedRoles={[UserRole.ADMIN, UserRole.COORDINATOR]}>
+              <PermissionGate allowedRoles={[UserRole.ADMIN]}>
                 <UserPage />
               </PermissionGate>
             </DashboardLayout>
@@ -55,7 +56,7 @@ export const AppRouter = () => {
           path="/roles"
           element={
             <DashboardLayout>
-              <PermissionGate allowedRoles={[UserRole.ADMIN, UserRole.COORDINATOR]}>
+              <PermissionGate allowedRoles={[UserRole.ADMIN]}>
                 <RolesPage />
               </PermissionGate>
             </DashboardLayout>
@@ -77,7 +78,7 @@ export const AppRouter = () => {
           path="/scenarios"
           element={
             <DashboardLayout>
-              <PermissionGate allowedRoles={[UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN]}>
+              <PermissionGate allowedRoles={[UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FOUNDATION_HEAD]}>
                 <ScenariosPage />
               </PermissionGate>
             </DashboardLayout>
@@ -88,7 +89,7 @@ export const AppRouter = () => {
           path="/simulation"
           element={
             <DashboardLayout>
-              <PermissionGate allowedRoles={[UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN]}>
+              <PermissionGate allowedRoles={[UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FOUNDATION_HEAD]}>
                 <SimulationPage />
               </PermissionGate>
             </DashboardLayout>
@@ -99,7 +100,7 @@ export const AppRouter = () => {
           path="/maps"
           element={
             <DashboardLayout>
-              <PermissionGate allowedRoles={[UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FIELD_WORKER]}>
+              <PermissionGate allowedRoles={[UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FOUNDATION_HEAD, UserRole.FIELD_WORKER]}>
                 <MapsPage />
               </PermissionGate>
             </DashboardLayout>
@@ -110,7 +111,7 @@ export const AppRouter = () => {
           path="/reports"
           element={
             <DashboardLayout>
-              <PermissionGate allowedRoles={[UserRole.COORDINATOR, UserRole.FOUNDATION_HEAD]}>
+              <PermissionGate allowedRoles={[UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FOUNDATION_HEAD]}>
                 <ReportsPage />
               </PermissionGate>
             </DashboardLayout>

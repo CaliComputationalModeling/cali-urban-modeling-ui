@@ -22,18 +22,23 @@ export function usePermissions() {
   }
 
   const canManageUsers = hasRole(UserRole.ADMIN)
-  const canViewSimulations = hasMinRole(UserRole.TECHNICIAN)
-  const canViewReports = hasRole(UserRole.COORDINATOR, UserRole.FOUNDATION_HEAD)
+  const canViewExecutiveDashboard = hasRole(UserRole.ADMIN, UserRole.COORDINATOR, UserRole.FOUNDATION_HEAD)
+  const canManageObservations = hasRole(UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FIELD_WORKER)
+  const canViewSimulations = hasRole(UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FOUNDATION_HEAD)
+  const canViewScenarios = hasRole(UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FOUNDATION_HEAD)
+  const canViewReports = hasRole(UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FOUNDATION_HEAD)
   const canViewAudit = hasRole(UserRole.ADMIN, UserRole.COORDINATOR)
-  // Según RBAC solicitado: Jefe de Fundación ve Dashboards y Reportes (no Cartografía por defecto)
-  const canViewMaps = hasRole(UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FIELD_WORKER)
+  const canViewMaps = hasRole(UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FOUNDATION_HEAD, UserRole.FIELD_WORKER)
 
   return {
     currentRole,
     hasRole,
     hasMinRole,
     canManageUsers,
+    canViewExecutiveDashboard,
+    canManageObservations,
     canViewSimulations,
+    canViewScenarios,
     canViewReports,
     canViewAudit,
     canViewMaps,

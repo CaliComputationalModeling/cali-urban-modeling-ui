@@ -8,6 +8,5 @@ export const loginSchema = z.object({
 export type LoginCredentials = z.infer<typeof loginSchema>
 
 export interface LoginResponse {
-  access_token: string
-  token_type: string
+  message: string
 }
