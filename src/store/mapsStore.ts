@@ -63,6 +63,19 @@ async function fetchLocalComunasGeoJson(): Promise<GeoJsonObject> {
   return assertComunasGeoJson(JSON.parse(text) as GeoJsonObject, 'public/maps/comunas_cali.geojson')
 }
 
+async function fetchBackendComunasGeoJson(): Promise<GeoJsonObject> {
+  const response = await fetch('/api/mapas/comunas', {
+    headers: { Accept: 'application/geo+json, application/json' },
+  })
+
+  if (!response.ok) {
+    throw new Error(`Backend /api/mapas/comunas respondió ${response.status}`)
+  }
+
+  const data = (await response.json()) as GeoJsonObject
+  return assertComunasGeoJson(data, '/api/mapas/comunas')
+}
+
 const INITIAL_STATE: Pick<
   MapsState,
   | 'heatmap'
@@ -129,12 +142,11 @@ export const useMapsStore = create<MapsState>((set, get) => ({
     set({ isLoadingComunas: true, error: null })
     try {
       const data = await fetchLocalComunasGeoJson().catch(async (localError: unknown) => {
-        const backendRes = await mapsEndpoints.getComunasGeoJson()
-        if (backendRes.ok && backendRes.data) {
-          return assertComunasGeoJson(backendRes.data, '/api/mapas/comunas')
-        }
         const localMessage = localError instanceof Error ? localError.message : 'No se pudo leer el archivo local'
-        throw new Error(`${localMessage}. Fallback backend falló: ${extractErrorMessage(backendRes.data)}`)
+        return fetchBackendComunasGeoJson().catch((backendError: unknown) => {
+          const backendMessage = backendError instanceof Error ? backendError.message : 'fallback backend falló'
+          throw new Error(`${localMessage}. ${backendMessage}`)
+        })
       })
       set({ comunasGeoJson: data, isLoadingComunas: false })
     } catch (error) {

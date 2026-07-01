@@ -7,6 +7,14 @@ export default defineConfig({
   plugins: [react(),
       tailwindcss(),
   ],
+  server: {
+    proxy: {
+      '/api': {
+        target: process.env.VITE_API_PROXY_TARGET ?? 'http://localhost:7000',
+        changeOrigin: true,
+      },
+    },
+  },
   test: {
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',

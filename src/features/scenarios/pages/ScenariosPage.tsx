@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Loader2, Plus, RefreshCw, Settings2 } from 'lucide-react'
+import { Download, Loader2, Plus, Settings2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { ImportScenarioModal } from '@/features/scenarios/components/ImportScenarioModal'
+import { ScenarioToolbar } from '@/features/scenarios/components/ScenarioToolbar'
+import { useExportScenario } from '@/features/scenarios/hooks/useExportScenario'
 import {
   simulationEndpoints,
   type EscenarioResponse,
@@ -24,6 +27,8 @@ export const ScenariosPage = () => {
   const [scenarios, setScenarios] = useState<EscenarioResponse[]>([])
   const [versions, setVersions] = useState<VersionEscenarioResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false)
+  const { exportScenario, exportingScenarioId, errors: exportErrors } = useExportScenario()
 
   const [ruleForm, setRuleForm] = useState({
     nombre_regla: '',
@@ -98,6 +103,13 @@ export const ScenariosPage = () => {
     }
   }
 
+  const handleExportScenario = async (scenario: EscenarioResponse) => {
+    if (!scenario.id) return
+    const ok = await exportScenario(scenario.id, scenario.nombre)
+    if (ok) toast.success('Escenario exportado')
+    else toast.error(exportErrors[scenario.id]?.[0] ?? 'No fue posible exportar el escenario')
+  }
+
   return (
     <div className="page-wrapper">
       <div className="page-header">
@@ -105,10 +117,20 @@ export const ScenariosPage = () => {
           <p className="page-eyebrow">Modelo / Configuracion</p>
           <h1 className="page-title">Escenarios y Reglas</h1>
         </div>
-        <button className="action-button" onClick={() => fetchAll().catch(() => null)}>
-          <RefreshCw size={18} />Actualizar
-        </button>
+        <ScenarioToolbar
+          onImport={() => setIsImportModalOpen(true)}
+          onRefresh={() => fetchAll().catch(() => null)}
+        />
       </div>
+
+      <ImportScenarioModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onImported={() => {
+          toast.success('Escenario importado')
+          fetchAll().catch(() => null)
+        }}
+      />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
         <section className="table-card" style={{ padding: 16 }}>
@@ -153,6 +175,7 @@ export const ScenariosPage = () => {
                 <th>Activo</th>
                 <th>Versiones</th>
                 <th>Creacion</th>
+                <th style={{ textAlign: 'right' }}>Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -163,6 +186,20 @@ export const ScenariosPage = () => {
                   <td>{scenario.activo ? 'Si' : 'No'}</td>
                   <td>{versions.filter((v) => v.escenario_id === scenario.id).length}</td>
                   <td>{scenario.fecha_creacion ?? '-'}</td>
+                  <td style={{ textAlign: 'right' }}>
+                    <button
+                      className="action-button"
+                      onClick={() => handleExportScenario(scenario)}
+                      disabled={!scenario.id || exportingScenarioId === scenario.id}
+                      title="Exportar configuración y resultados del escenario"
+                    >
+                      {exportingScenarioId === scenario.id ? <Loader2 size={16} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Download size={16} />}
+                      Exportar
+                    </button>
+                    {scenario.id && exportErrors[scenario.id]?.length > 0 && (
+                      <p className="text-error" style={{ margin: '6px 0 0' }}>{exportErrors[scenario.id][0]}</p>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

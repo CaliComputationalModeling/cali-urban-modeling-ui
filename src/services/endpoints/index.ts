@@ -10,3 +10,5 @@ export { mapsEndpoints } from "./maps.endpoints";
 export type { HeatmapCell, HeatmapParams, PredictedRoutesResponse } from "./maps.endpoints";
 export { reportsEndpoints } from "./reports.endpoints";
 export type { GenerateReportRequest, ReportHistoryItem } from "./reports.endpoints";
+export { scenarioImportExportEndpoints } from "./scenarioImportExport.endpoints";
+export type { ScenarioImportResult } from "./scenarioImportExport.endpoints";
