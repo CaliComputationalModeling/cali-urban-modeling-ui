@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Download, Loader2, Plus, Settings2 } from 'lucide-react'
+import { Download, Loader2, Plus, Settings2, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { ImportScenarioModal } from '@/features/scenarios/components/ImportScenarioModal'
 import { ScenarioToolbar } from '@/features/scenarios/components/ScenarioToolbar'
@@ -11,15 +11,229 @@ import {
   type VersionEscenarioResponse,
 } from '@/services/endpoints/simulation.endpoints'
 
-function parseJsonObject(value: string, label: string): Record<string, unknown> | null {
-  try {
-    const parsed = JSON.parse(value)
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed
-  } catch {
-    // handled below
+interface ParameterOption {
+  key: string
+  label: string
+  min: number
+  max: number
+  step: number
+  defaultValue: number
+  suffix?: string
+}
+
+interface ParameterRow {
+  id: string
+  key: string
+  value: number
+}
+
+const RULE_WEIGHT_OPTIONS: ParameterOption[] = [
+  { key: 'clima', label: 'Clima', min: 0, max: 1, step: 0.05, defaultValue: 0.5 },
+  { key: 'seguridad', label: 'Seguridad', min: 0, max: 1, step: 0.05, defaultValue: 0.5 },
+  { key: 'accesibilidad', label: 'Accesibilidad', min: 0, max: 1, step: 0.05, defaultValue: 0 },
+  { key: 'servicios', label: 'Servicios cercanos', min: 0, max: 1, step: 0.05, defaultValue: 0 },
+]
+
+const RULE_WEIGHT_TOTAL = 1
+const WEIGHT_EPSILON = 0.001
+
+const CLIMATE_OPTIONS: ParameterOption[] = [
+  { key: 'lluvia', label: 'Lluvia', min: 0, max: 1, step: 0.05, defaultValue: 0 },
+  { key: 'temperatura', label: 'Temperatura', min: 0, max: 45, step: 1, defaultValue: 25, suffix: '°C' },
+]
+
+const SECURITY_OPTIONS: ParameterOption[] = [
+  { key: 'riesgo', label: 'Riesgo', min: 0, max: 1, step: 0.05, defaultValue: 0.2 },
+  { key: 'cobertura_policial', label: 'Cobertura policial', min: 0, max: 1, step: 0.05, defaultValue: 0.8 },
+  { key: 'indice_criminalidad', label: 'Índice criminalidad', min: 0, max: 1, step: 0.05, defaultValue: 0.65 },
+]
+
+const GRID_OPTIONS: ParameterOption[] = [
+  { key: 'ancho', label: 'Ancho de malla', min: 5, max: 200, step: 1, defaultValue: 20 },
+  { key: 'alto', label: 'Alto de malla', min: 5, max: 200, step: 1, defaultValue: 20 },
+  { key: 'resolucion_metros', label: 'Resolución', min: 10, max: 250, step: 5, defaultValue: 50, suffix: 'm' },
+]
+
+function createParameterRow(option: ParameterOption, valueOverride?: number): ParameterRow {
+  return {
+    id: `${option.key}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    key: option.key,
+    value: valueOverride ?? option.defaultValue,
   }
-  toast.error(`${label} debe ser un objeto JSON valido`)
-  return null
+}
+
+function clampValue(value: number, option: ParameterOption): number {
+  if (!Number.isFinite(value)) return option.defaultValue
+  return Math.min(option.max, Math.max(option.min, value))
+}
+
+function roundWeight(value: number): number {
+  return Number(value.toFixed(4))
+}
+
+function sumRows(rows: ParameterRow[]): number {
+  return roundWeight(rows.reduce((sum, row) => sum + Number(row.value || 0), 0))
+}
+
+function rowsToNumberRecord(rows: ParameterRow[]): Record<string, number> {
+  return rows.reduce<Record<string, number>>((acc, row) => {
+    if (!row.key) return acc
+    acc[row.key] = row.value
+    return acc
+  }, {})
+}
+
+interface ParameterBuilderProps {
+  title: string
+  description: string
+  options: ParameterOption[]
+  rows: ParameterRow[]
+  onChange: (rows: ParameterRow[]) => void
+  maxTotal?: number
+}
+
+function ParameterBuilder({ title, description, options, rows, onChange, maxTotal }: ParameterBuilderProps) {
+  const usedKeys = rows.map((row) => row.key)
+  const availableOptions = options.filter((option) => !usedKeys.includes(option.key))
+  const preview = rowsToNumberRecord(rows)
+  const total = sumRows(rows)
+  const remaining = maxTotal === undefined ? null : roundWeight(Math.max(0, maxTotal - total))
+  const canAddMore = availableOptions.length > 0 && (maxTotal === undefined || total < maxTotal - WEIGHT_EPSILON)
+
+  const updateRow = (rowId: string, patch: Partial<ParameterRow>) => {
+    onChange(rows.map((row) => (row.id === rowId ? { ...row, ...patch } : row)))
+  }
+
+  const changeKey = (rowId: string, key: string) => {
+    const row = rows.find((item) => item.id === rowId)
+    const option = options.find((item) => item.key === key)
+    if (!row || !option) return
+    const otherTotal = sumRows(rows.filter((item) => item.id !== rowId))
+    const maxAllowed = maxTotal === undefined ? option.max : Math.min(option.max, Math.max(0, maxTotal - otherTotal))
+    updateRow(rowId, { key, value: roundWeight(Math.min(maxAllowed, clampValue(option.defaultValue, option))) })
+  }
+
+  const changeValue = (rowId: string, rawValue: number) => {
+    const row = rows.find((item) => item.id === rowId)
+    const option = options.find((item) => item.key === row?.key)
+    if (!row || !option) return
+    const otherTotal = sumRows(rows.filter((item) => item.id !== rowId))
+    const maxAllowed = maxTotal === undefined ? option.max : Math.min(option.max, Math.max(0, maxTotal - otherTotal))
+    updateRow(rowId, { value: roundWeight(Math.min(maxAllowed, clampValue(rawValue, option))) })
+  }
+
+  const addRow = () => {
+    const nextOption = availableOptions[0]
+    if (!nextOption) {
+      toast.info('Todos los parámetros disponibles ya fueron agregados')
+      return
+    }
+    if (maxTotal !== undefined && total >= maxTotal - WEIGHT_EPSILON) {
+      toast.info('La suma de pesos ya es 1. Reduce un peso para liberar cupo.')
+      return
+    }
+    const nextValue = maxTotal === undefined
+      ? nextOption.defaultValue
+      : roundWeight(Math.min(nextOption.max, Math.max(nextOption.min, maxTotal - total)))
+    onChange([...rows, createParameterRow(nextOption, nextValue)])
+  }
+
+  const removeRow = (rowId: string) => {
+    if (rows.length <= 1) return
+    onChange(rows.filter((row) => row.id !== rowId))
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      <div>
+        <p style={{ margin: 0, fontWeight: 800, color: 'var(--color-text-dark)' }}>{title}</p>
+        <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--color-text-muted)', lineHeight: 1.45 }}>
+          {description}
+        </p>
+      </div>
+
+      <div style={{ display: 'grid', gap: 10 }}>
+        {rows.map((row) => {
+          const option = options.find((item) => item.key === row.key) ?? options[0]
+          const otherTotal = maxTotal === undefined ? 0 : sumRows(rows.filter((item) => item.id !== row.id))
+          const maxAllowed = maxTotal === undefined ? option.max : Math.min(option.max, Math.max(0, maxTotal - otherTotal))
+          return (
+            <div
+              key={row.id}
+              className="scenario-param-row"
+            >
+              <select
+                className="sheet-select"
+                value={row.key}
+                onChange={(event) => changeKey(row.id, event.target.value)}
+                aria-label={`${title}: seleccionar clave`}
+              >
+                {options.map((item) => (
+                  <option key={item.key} value={item.key} disabled={item.key !== row.key && usedKeys.includes(item.key)}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+
+              <input
+                type="range"
+                min={option.min}
+                max={maxAllowed}
+                step={option.step}
+                value={row.value}
+                onChange={(event) => changeValue(row.id, Number(event.target.value))}
+                aria-label={`${option.label}: ajustar valor`}
+                style={{ width: '100%', accentColor: 'var(--color-accent)' }}
+              />
+
+              <div className="scenario-param-value">
+                <input
+                  className="sheet-input"
+                  type="number"
+                  min={option.min}
+                  max={maxAllowed}
+                  step={option.step}
+                  value={row.value}
+                  onChange={(event) => changeValue(row.id, Number(event.target.value))}
+                  aria-label={`${option.label}: valor numérico`}
+                  style={{ padding: '10px 12px' }}
+                />
+                {option.suffix && <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{option.suffix}</span>}
+              </div>
+
+              <button
+                type="button"
+                className="action-button"
+                onClick={() => removeRow(row.id)}
+                disabled={rows.length <= 1}
+                title="Eliminar parámetro"
+                aria-label={`Eliminar ${option.label}`}
+                style={{ padding: '10px 12px' }}
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          )
+        })}
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+        <button type="button" className="action-button" onClick={addRow} disabled={!canAddMore}>
+          <Plus size={16} />{availableOptions.length === 0 ? 'Todos agregados' : maxTotal !== undefined && !canAddMore ? 'Sin cupo' : 'Agregar parámetro'}
+        </button>
+        <code className="scenario-param-preview">
+          {JSON.stringify(preview)}
+        </code>
+      </div>
+
+      {maxTotal !== undefined && (
+        <div className="scenario-weight-summary">
+          <span>Total: {total.toFixed(2)} / {maxTotal.toFixed(2)}</span>
+          <span>Cupo restante: {(remaining ?? 0).toFixed(2)}</span>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export const ScenariosPage = () => {
@@ -28,21 +242,32 @@ export const ScenariosPage = () => {
   const [versions, setVersions] = useState<VersionEscenarioResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
+  const [isRuleConfirmOpen, setIsRuleConfirmOpen] = useState(false)
+  const [isCreatingRule, setIsCreatingRule] = useState(false)
   const { exportScenario, exportingScenarioId, errors: exportErrors } = useExportScenario()
 
   const [ruleForm, setRuleForm] = useState({
     nombre_regla: '',
     formula: 'atractivo = clima + seguridad',
-    pesos: '{"clima": 0.5, "seguridad": 0.5}',
     descripcion: '',
   })
+  const [ruleWeights, setRuleWeights] = useState<ParameterRow[]>([
+    createParameterRow(RULE_WEIGHT_OPTIONS[0]),
+  ])
   const [scenarioForm, setScenarioForm] = useState({
     nombre: '',
     regla_transicion_id: '',
-    variables_clima: '{"lluvia": 0, "temperatura": 25}',
-    variables_seguridad: '{"riesgo": 0.2}',
-    configuracion_malla: '{"ancho": 20, "alto": 20, "densidad_inicial": []}',
   })
+  const [climateParams, setClimateParams] = useState<ParameterRow[]>([
+    createParameterRow(CLIMATE_OPTIONS[0]),
+  ])
+  const [securityParams, setSecurityParams] = useState<ParameterRow[]>([
+    createParameterRow(SECURITY_OPTIONS[0]),
+  ])
+  const [gridParams, setGridParams] = useState<ParameterRow[]>([
+    createParameterRow(GRID_OPTIONS[0]),
+    createParameterRow(GRID_OPTIONS[1]),
+  ])
 
   const fetchAll = async () => {
     setIsLoading(true)
@@ -62,18 +287,39 @@ export const ScenariosPage = () => {
     fetchAll().catch(() => null)
   }, [])
 
+  const ruleWeightTotal = sumRows(ruleWeights)
+  const ruleWeightSummary = ruleWeights.map((row) => ({
+    ...row,
+    label: RULE_WEIGHT_OPTIONS.find((option) => option.key === row.key)?.label ?? row.key,
+  }))
+
+  const requestCreateRuleConfirmation = () => {
+    if (!ruleForm.nombre_regla.trim()) {
+      toast.error('Ingresa un nombre para la regla')
+      return
+    }
+    if (Math.abs(ruleWeightTotal - RULE_WEIGHT_TOTAL) > WEIGHT_EPSILON) {
+      toast.error('La suma de pesos debe ser exactamente 1. Ajusta o agrega parámetros para completar el total.')
+      return
+    }
+    setIsRuleConfirmOpen(true)
+  }
+
   const createRule = async () => {
-    const pesos = parseJsonObject(ruleForm.pesos, 'Pesos')
-    if (!pesos) return
+    const pesos = rowsToNumberRecord(ruleWeights)
+    setIsCreatingRule(true)
     const res = await simulationEndpoints.createRule({
       nombre_regla: ruleForm.nombre_regla,
       formula: ruleForm.formula,
       descripcion: ruleForm.descripcion,
-      pesos: pesos as Record<string, number>,
+      pesos,
     })
+    setIsCreatingRule(false)
     if (res.ok) {
       toast.success('Regla creada')
-      setRuleForm({ nombre_regla: '', formula: 'atractivo = clima + seguridad', pesos: '{"clima": 0.5, "seguridad": 0.5}', descripcion: '' })
+      setIsRuleConfirmOpen(false)
+      setRuleForm({ nombre_regla: '', formula: 'atractivo = clima + seguridad', descripcion: '' })
+      setRuleWeights([createParameterRow(RULE_WEIGHT_OPTIONS[0])])
       fetchAll().catch(() => null)
     } else {
       toast.error('No fue posible crear la regla')
@@ -81,17 +327,20 @@ export const ScenariosPage = () => {
   }
 
   const createScenario = async () => {
-    const variables_clima = parseJsonObject(scenarioForm.variables_clima, 'Variables clima')
-    const variables_seguridad = parseJsonObject(scenarioForm.variables_seguridad, 'Variables seguridad')
-    const configuracion_malla = parseJsonObject(scenarioForm.configuracion_malla, 'Configuracion malla')
+    const variables_clima = rowsToNumberRecord(climateParams)
+    const variables_seguridad = rowsToNumberRecord(securityParams)
+    const configuracion_malla = rowsToNumberRecord(gridParams)
     const reglaId = Number(scenarioForm.regla_transicion_id)
-    if (!variables_clima || !variables_seguridad || !configuracion_malla || !reglaId) return
+    if (!reglaId) {
+      toast.error('Selecciona una regla para crear el escenario')
+      return
+    }
 
     const res = await simulationEndpoints.createScenario({
       nombre: scenarioForm.nombre,
       regla_transicion_id: reglaId,
-      variables_clima: variables_clima as Record<string, number>,
-      variables_seguridad: variables_seguridad as Record<string, number>,
+      variables_clima,
+      variables_seguridad,
       configuracion_malla,
     })
     if (res.ok) {
@@ -132,15 +381,95 @@ export const ScenariosPage = () => {
         }}
       />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
+      {isRuleConfirmOpen && (
+        <div className="scenario-confirm-overlay" role="dialog" aria-modal="true" aria-labelledby="rule-confirm-title">
+          <div className="scenario-confirm-card">
+            <div className="scenario-confirm-header">
+              <div>
+                <p className="page-eyebrow" style={{ marginBottom: 4 }}>Confirmación</p>
+                <h2 id="rule-confirm-title" className="scenario-confirm-title">Crear regla de transición</h2>
+              </div>
+              <button
+                type="button"
+                className="scenario-confirm-close"
+                onClick={() => setIsRuleConfirmOpen(false)}
+                aria-label="Cerrar confirmación"
+                disabled={isCreatingRule}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="scenario-confirm-body">
+              <div className="scenario-confirm-field">
+                <span>Nombre</span>
+                <strong>{ruleForm.nombre_regla}</strong>
+              </div>
+              <div className="scenario-confirm-field">
+                <span>Descripción</span>
+                <p>{ruleForm.descripcion || 'Sin descripción'}</p>
+              </div>
+              <div className="scenario-confirm-field">
+                <span>Fórmula</span>
+                <code>{ruleForm.formula}</code>
+              </div>
+
+              <div className="scenario-confirm-weights">
+                <div className="scenario-confirm-weights-header">
+                  <span>Pesos finales</span>
+                  <strong>Total {ruleWeightTotal.toFixed(2)}</strong>
+                </div>
+                {ruleWeightSummary.map((weight) => (
+                  <div key={weight.id} className="scenario-confirm-weight-row">
+                    <span>{weight.label}</span>
+                    <div className="scenario-confirm-weight-track" aria-hidden="true">
+                      <span style={{ width: `${Math.max(0, Math.min(100, weight.value * 100))}%` }} />
+                    </div>
+                    <strong>{weight.value.toFixed(2)}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="scenario-confirm-actions">
+              <button
+                type="button"
+                className="action-button"
+                onClick={() => setIsRuleConfirmOpen(false)}
+                disabled={isCreatingRule}
+              >
+                Rechazar / Cancelar
+              </button>
+              <button
+                type="button"
+                className="action-button"
+                onClick={createRule}
+                disabled={isCreatingRule}
+              >
+                {isCreatingRule ? <Loader2 size={18} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Plus size={18} />}
+                Aceptar / Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="scenario-form-grid">
         <section className="table-card" style={{ padding: 16 }}>
           <p style={{ margin: 0, fontWeight: 800 }}>Crear regla</p>
           <div style={{ display: 'grid', gap: 10, marginTop: 12 }}>
             <input className="sheet-input" placeholder="Nombre" value={ruleForm.nombre_regla} onChange={(e) => setRuleForm({ ...ruleForm, nombre_regla: e.target.value })} />
             <input className="sheet-input" placeholder="Formula" value={ruleForm.formula} onChange={(e) => setRuleForm({ ...ruleForm, formula: e.target.value })} />
-            <input className="sheet-input" placeholder="Pesos JSON" value={ruleForm.pesos} onChange={(e) => setRuleForm({ ...ruleForm, pesos: e.target.value })} />
+            <ParameterBuilder
+              title="Pesos de la regla"
+              description="Selecciona cada factor y ajusta su peso sin escribir JSON manualmente."
+              options={RULE_WEIGHT_OPTIONS}
+              rows={ruleWeights}
+              onChange={setRuleWeights}
+              maxTotal={RULE_WEIGHT_TOTAL}
+            />
             <input className="sheet-input" placeholder="Descripcion" value={ruleForm.descripcion} onChange={(e) => setRuleForm({ ...ruleForm, descripcion: e.target.value })} />
-            <button className="action-button" onClick={createRule}><Plus size={18} />Crear regla</button>
+            <button className="action-button" onClick={requestCreateRuleConfirmation}><Plus size={18} />Crear regla</button>
           </div>
         </section>
 
@@ -152,9 +481,27 @@ export const ScenariosPage = () => {
               <option value="">Selecciona una regla</option>
               {rules.map((rule) => <option key={rule.id} value={rule.id}>{rule.nombre_regla}</option>)}
             </select>
-            <input className="sheet-input" value={scenarioForm.variables_clima} onChange={(e) => setScenarioForm({ ...scenarioForm, variables_clima: e.target.value })} />
-            <input className="sheet-input" value={scenarioForm.variables_seguridad} onChange={(e) => setScenarioForm({ ...scenarioForm, variables_seguridad: e.target.value })} />
-            <input className="sheet-input" value={scenarioForm.configuracion_malla} onChange={(e) => setScenarioForm({ ...scenarioForm, configuracion_malla: e.target.value })} />
+            <ParameterBuilder
+              title="Variables de clima"
+              description="Define condiciones como lluvia o temperatura mediante controles sincronizados."
+              options={CLIMATE_OPTIONS}
+              rows={climateParams}
+              onChange={setClimateParams}
+            />
+            <ParameterBuilder
+              title="Variables de seguridad"
+              description="Configura indicadores de riesgo usados por el escenario."
+              options={SECURITY_OPTIONS}
+              rows={securityParams}
+              onChange={setSecurityParams}
+            />
+            <ParameterBuilder
+              title="Configuración de malla"
+              description="Ajusta dimensiones y resolución sin editar objetos JSON."
+              options={GRID_OPTIONS}
+              rows={gridParams}
+              onChange={setGridParams}
+            />
             <button className="action-button" onClick={createScenario}><Settings2 size={18} />Crear escenario</button>
           </div>
         </section>

@@ -1,0 +1,235 @@
+.scenario-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 14px;
+}
+
+.scenario-param-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.9fr) minmax(180px, 1.4fr) minmax(120px, 0.6fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-light);
+}
+
+.scenario-param-value {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.scenario-param-preview {
+  max-width: 100%;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-light);
+  color: var(--color-text-muted);
+  font-size: 12px;
+  word-break: break-word;
+}
+
+.scenario-param-row input[type='range'] {
+  cursor: pointer;
+}
+
+.scenario-weight-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 9px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: rgba(0, 217, 255, 0.06);
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.scenario-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(10, 18, 30, 0.68);
+  backdrop-filter: blur(6px);
+}
+
+.scenario-confirm-card {
+  width: min(620px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-white);
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.28);
+}
+
+.scenario-confirm-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 22px 24px 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.scenario-confirm-title {
+  margin: 0;
+  color: var(--color-text-dark);
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.scenario-confirm-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-light);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.scenario-confirm-close:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-text-dark);
+}
+
+.scenario-confirm-body {
+  display: grid;
+  gap: 14px;
+  padding: 20px 24px;
+}
+
+.scenario-confirm-field {
+  display: grid;
+  gap: 5px;
+}
+
+.scenario-confirm-field span,
+.scenario-confirm-weights-header span {
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+.scenario-confirm-field strong,
+.scenario-confirm-field p,
+.scenario-confirm-field code {
+  margin: 0;
+  color: var(--color-text-dark);
+  font-size: 14px;
+}
+
+.scenario-confirm-field code {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-light);
+}
+
+.scenario-confirm-weights {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-light);
+}
+
+.scenario-confirm-weights-header,
+.scenario-confirm-weight-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(120px, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.scenario-confirm-weights-header {
+  grid-template-columns: 1fr auto;
+}
+
+.scenario-confirm-weights-header strong,
+.scenario-confirm-weight-row strong {
+  color: var(--color-text-dark);
+  font-family: var(--font-mono);
+}
+
+.scenario-confirm-weight-row > span {
+  color: var(--color-text-dark);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.scenario-confirm-weight-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--color-border);
+}
+
+.scenario-confirm-weight-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-accent);
+}
+
+.scenario-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 24px 22px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg-light);
+}
+
+@media (max-width: 820px) {
+  .scenario-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .scenario-param-row {
+    grid-template-columns: 1fr;
+  }
+
+  .scenario-param-row .action-button,
+  .scenario-param-value .sheet-input {
+    width: 100%;
+  }
+
+  .scenario-confirm-weights-header,
+  .scenario-confirm-weight-row {
+    grid-template-columns: 1fr;
+  }
+
+  .scenario-confirm-actions {
+    flex-direction: column-reverse;
+  }
+
+  .scenario-confirm-actions .action-button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .scenario-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .scenario-param-row {
+    padding: 10px;
+  }
+}
