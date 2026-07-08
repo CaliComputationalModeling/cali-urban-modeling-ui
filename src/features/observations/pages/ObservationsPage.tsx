@@ -8,6 +8,7 @@ import type { MoodState, Observation, ObservationCreate, ObservationTag, Observa
 const OBSERVATION_TYPES: ObservationType[] = ['Interacción', 'Incidencia', 'Avistamiento']
 const MOODS: MoodState[] = ['tranquilo', 'neutral', 'alterado', 'vulnerable', 'agresivo']
 const TAGS: ObservationTag[] = ['Drogas', 'Conflicto', 'Refugio Imprevisto', 'Salud', 'Alimentación', 'Movilidad', 'Riesgo']
+const CALI_BOUNDS = { latMin: 3.30, latMax: 3.60, lonMin: -76.60, lonMax: -76.45 }
 
 const nowLocal = () => new Date().toISOString().slice(0, 16)
 
@@ -29,6 +30,23 @@ function toDatetimePayload(value: string): string {
 
 function imageUrl(path: string): string {
   return path.startsWith('http') ? path : `http://localhost:8000${path}`
+}
+
+function isInsideCaliBounds(latitud: number, longitud: number): boolean {
+  return (
+    latitud >= CALI_BOUNDS.latMin &&
+    latitud <= CALI_BOUNDS.latMax &&
+    longitud >= CALI_BOUNDS.lonMin &&
+    longitud <= CALI_BOUNDS.lonMax
+  )
+}
+
+function extractErrorMessage(data: unknown, fallback: string): string {
+  if (data && typeof data === 'object' && 'detail' in data) {
+    const detail = (data as { detail: unknown }).detail
+    return typeof detail === 'string' ? detail : JSON.stringify(detail)
+  }
+  return fallback
 }
 
 function formFromObservation(obs: Observation): ObservationCreate {
@@ -82,6 +100,9 @@ export const ObservationsPage = () => {
   const validateForm = (): boolean => {
     if (!form.tipo_observacion) return toast.error('Selecciona el tipo de observación'), false
     if (!Number.isFinite(form.latitud) || !Number.isFinite(form.longitud)) return toast.error('Coordenadas inválidas'), false
+    if (!isInsideCaliBounds(form.latitud, form.longitud)) {
+      return toast.error('Las coordenadas deben estar dentro de Cali. Revisa latitud y longitud.'), false
+    }
     if (!form.descripcion.trim()) return toast.error('La descripción es obligatoria'), false
     if (form.numero_personas < 0) return toast.error('El número de personas no puede ser negativo'), false
     if (selectedPhotos.length > 3) return toast.error('Solo puedes cargar hasta 3 fotografías'), false
@@ -104,7 +125,10 @@ export const ObservationsPage = () => {
       : await observationEndpoints.create(payload)
 
     if (!res.ok) {
-      toast.error(editingId ? 'No fue posible actualizar la observación' : 'No fue posible crear la observación')
+      toast.error(extractErrorMessage(
+        res.data,
+        editingId ? 'No fue posible actualizar la observación' : 'No fue posible crear la observación',
+      ))
       setIsSaving(false)
       return
     }
@@ -144,7 +168,11 @@ export const ObservationsPage = () => {
           latitud: Number(position.coords.latitude.toFixed(6)),
           longitud: Number(position.coords.longitude.toFixed(6)),
         }))
-        toast.success('GPS capturado')
+        if (isInsideCaliBounds(position.coords.latitude, position.coords.longitude)) {
+          toast.success('GPS capturado')
+        } else {
+          toast.warning('GPS capturado fuera de Cali. Corrige las coordenadas antes de guardar.')
+        }
       },
       () => toast.error('No fue posible capturar GPS'),
       { enableHighAccuracy: true, timeout: 10000 },

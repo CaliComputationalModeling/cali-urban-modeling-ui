@@ -7,6 +7,7 @@ import { useMapsStore } from '@/store/mapsStore'
 import { useSimulationStore } from '@/store/simulationStore'
 import http from '@/services/http'
 import type { PointOfInterest, GeoJsonFeature } from '@/shared/contracts/simulation.contract'
+import { filterLatLonInsideGeoJson } from '@/shared/lib/geojson'
 import type { Feature, GeoJsonProperties, Geometry } from 'geojson'
 
 type LatLngTuple = [number, number]
@@ -58,6 +59,7 @@ export const MapsPage = () => {
   const fetchPredictedRoutes = useMapsStore((s) => s.fetchPredictedRoutes)
   const isLoadingHeatmap = useMapsStore((s) => s.isLoadingHeatmap)
   const isLoadingRoutes = useMapsStore((s) => s.isLoadingRoutes)
+  const isLoadingComunas = useMapsStore((s) => s.isLoadingComunas)
   const error = useMapsStore((s) => s.error)
   const clearError = useMapsStore((s) => s.clearError)
   const showComunasLayer = useMapsStore((s) => s.showComunasLayer)
@@ -79,8 +81,8 @@ export const MapsPage = () => {
   }, [fetchHeatmap])
 
   useEffect(() => {
-    if (showComunasLayer) fetchComunasGeoJson().catch(() => null)
-  }, [fetchComunasGeoJson, showComunasLayer])
+    fetchComunasGeoJson().catch(() => null)
+  }, [fetchComunasGeoJson])
 
   useEffect(() => {
     http
@@ -119,11 +121,13 @@ export const MapsPage = () => {
   }, [densityStats.min, densityStats.max])
 
   const filteredHeatmap = useMemo(() => {
-    return heatmap.filter((c) => {
+    const densityFiltered = heatmap.filter((c) => {
       const d = Number(c.densidad ?? 0)
       return d >= legendMin && d <= legendMax
     })
-  }, [heatmap, legendMin, legendMax])
+
+    return filterLatLonInsideGeoJson(densityFiltered, comunasGeoJson, (cell) => [cell.lat, cell.lon])
+  }, [comunasGeoJson, heatmap, legendMin, legendMax])
 
   const allPointsForFit = useMemo(() => {
     const pts: LatLngTuple[] = []
@@ -474,9 +478,9 @@ export const MapsPage = () => {
           </div>
 
           {/* overlay status */}
-          {(isLoadingHeatmap || isLoadingRoutes) && (
+          {(isLoadingHeatmap || isLoadingRoutes || isLoadingComunas) && (
             <div className="loading-overlay" style={{ backgroundColor: 'rgba(13,16,23,0.55)', color: 'white' }}>
-              {isLoadingHeatmap ? 'Cargando heatmap…' : 'Cargando rutas…'}
+              {isLoadingComunas ? 'Cargando límite de Cali…' : isLoadingHeatmap ? 'Cargando heatmap…' : 'Cargando rutas…'}
             </div>
           )}
         </div>

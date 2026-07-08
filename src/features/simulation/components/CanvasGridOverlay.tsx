@@ -20,6 +20,8 @@ interface CanvasGridOverlayProps {
   maxValue?: number
   enableProbabilityTooltip?: boolean
   orientation?: MatrixOrientation
+  offsetLat?: number
+  offsetLon?: number
 }
 
 export function colorForValue(
@@ -107,6 +109,15 @@ function getProbabilityLabel(ratio: number): string {
   return 'Baja'
 }
 
+function applyBoundsOffset(bounds: GridBounds, offsetLat: number, offsetLon: number): GridBounds {
+  return {
+    north: bounds.north + offsetLat,
+    south: bounds.south + offsetLat,
+    west: bounds.west + offsetLon,
+    east: bounds.east + offsetLon,
+  }
+}
+
 export const CanvasGridOverlay = ({
   bounds,
   data,
@@ -115,6 +126,8 @@ export const CanvasGridOverlay = ({
   maxValue = 1,
   enableProbabilityTooltip = false,
   orientation = 'normal',
+  offsetLat = 0,
+  offsetLon = 0,
 }: CanvasGridOverlayProps) => {
   const map = useMap()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -131,8 +144,9 @@ export const CanvasGridOverlay = ({
     map.getPanes().overlayPane.appendChild(canvas)
 
     const updatePosition = () => {
-      const northWest = map.latLngToLayerPoint([bounds.north, bounds.west])
-      const southEast = map.latLngToLayerPoint([bounds.south, bounds.east])
+      const shiftedBounds = applyBoundsOffset(bounds, offsetLat, offsetLon)
+      const northWest = map.latLngToLayerPoint([shiftedBounds.north, shiftedBounds.west])
+      const southEast = map.latLngToLayerPoint([shiftedBounds.south, shiftedBounds.east])
       const width = Math.max(1, Math.abs(southEast.x - northWest.x))
       const height = Math.max(1, Math.abs(southEast.y - northWest.y))
       canvas.style.transform = `translate3d(${Math.min(northWest.x, southEast.x)}px, ${Math.min(northWest.y, southEast.y)}px, 0)`
@@ -149,20 +163,21 @@ export const CanvasGridOverlay = ({
       canvas.remove()
       canvasRef.current = null
     }
-  }, [bounds, map])
+  }, [bounds, map, offsetLat, offsetLon])
 
   useEffect(() => {
     if (!enableProbabilityTooltip || layerMode !== 'density') return
 
     const handleClick = (event: L.LeafletMouseEvent) => {
       if (!data || data.length === 0 || (data[0]?.length ?? 0) === 0) return
+      const shiftedBounds = applyBoundsOffset(bounds, offsetLat, offsetLon)
       const { lat, lng } = event.latlng
-      if (lat > bounds.north || lat < bounds.south || lng < bounds.west || lng > bounds.east) return
+      if (lat > shiftedBounds.north || lat < shiftedBounds.south || lng < shiftedBounds.west || lng > shiftedBounds.east) return
 
       const rows = data.length
       const cols = data[0]?.length ?? 0
-      const row = Math.floor(((bounds.north - lat) / (bounds.north - bounds.south)) * rows)
-      const col = Math.floor(((lng - bounds.west) / (bounds.east - bounds.west)) * cols)
+      const row = Math.floor(((shiftedBounds.north - lat) / (shiftedBounds.north - shiftedBounds.south)) * rows)
+      const col = Math.floor(((lng - shiftedBounds.west) / (shiftedBounds.east - shiftedBounds.west)) * cols)
       const source = getSourceCell(row, col, rows, cols, orientation)
       const value = data[source.row]?.[source.col] ?? 0
       if (value <= 0) return
@@ -180,7 +195,7 @@ export const CanvasGridOverlay = ({
     return () => {
       map.off('click', handleClick)
     }
-  }, [bounds, data, enableProbabilityTooltip, layerMode, map, maxValue, orientation])
+  }, [bounds, data, enableProbabilityTooltip, layerMode, map, maxValue, offsetLat, offsetLon, orientation])
 
   useEffect(() => {
     const canvas = canvasRef.current

@@ -14,6 +14,9 @@ import {
 interface ParameterOption {
   key: string
   label: string
+  effect?: 'attractor' | 'repulsor'
+  signo?: 1 | -1
+  emoji?: string
   min: number
   max: number
   step: number
@@ -28,13 +31,24 @@ interface ParameterRow {
 }
 
 const RULE_WEIGHT_OPTIONS: ParameterOption[] = [
-  { key: 'clima', label: 'Clima', min: 0, max: 1, step: 0.05, defaultValue: 0.5 },
-  { key: 'seguridad', label: 'Seguridad', min: 0, max: 1, step: 0.05, defaultValue: 0.5 },
-  { key: 'accesibilidad', label: 'Accesibilidad', min: 0, max: 1, step: 0.05, defaultValue: 0 },
-  { key: 'servicios', label: 'Servicios cercanos', min: 0, max: 1, step: 0.05, defaultValue: 0 },
+  { key: 'temperatura', label: 'Temperatura', effect: 'attractor', signo: 1, min: 0, max: 1, step: 0.05, defaultValue: 0.1 },
+  { key: 'lluvia', label: 'Lluvia', effect: 'repulsor', signo: -1, min: 0, max: 1, step: 0.05, defaultValue: 0.05 },
+  { key: 'riesgo', label: 'Riesgo', effect: 'repulsor', signo: -1, min: 0, max: 1, step: 0.05, defaultValue: 0.1 },
+  { key: 'seguridad', label: 'Seguridad', effect: 'attractor', signo: 1, min: 0, max: 1, step: 0.05, defaultValue: 0.1 },
+  { key: 'indice_criminalidad', label: 'Índice de criminalidad', effect: 'repulsor', signo: -1, min: 0, max: 1, step: 0.05, defaultValue: 0.1 },
+  { key: 'cobertura_policial', label: 'Cobertura policial', effect: 'attractor', signo: 1, min: 0, max: 1, step: 0.05, defaultValue: 0.1 },
+  { key: 'poi_atractivo', label: 'POI atractivo', effect: 'attractor', signo: 1, min: 0, max: 1, step: 0.05, defaultValue: 0.1 },
+  { key: 'atractivo_comercial', label: 'Atractivo comercial', effect: 'attractor', signo: 1, min: 0, max: 1, step: 0.05, defaultValue: 0.1 },
+  { key: 'proximidad_transporte', label: 'Proximidad transporte', effect: 'attractor', signo: 1, min: 0, max: 1, step: 0.05, defaultValue: 0.1 },
+  { key: 'densidad_actual', label: 'Densidad actual', effect: 'attractor', signo: 1, min: 0, max: 1, step: 0.05, defaultValue: 0.1 },
+  { key: 'fachadas_ciegas', label: 'Fachadas ciegas', emoji: '🧱', effect: 'attractor', signo: 1, min: 0, max: 1, step: 0.05, defaultValue: 0.1 },
+  { key: 'vias_deterioradas', label: 'Vías deterioradas', emoji: '🚧', effect: 'attractor', signo: 1, min: 0, max: 1, step: 0.05, defaultValue: 0.1 },
+  { key: 'residuos', label: 'Residuos', emoji: '🗑️', effect: 'attractor', signo: 1, min: 0, max: 1, step: 0.05, defaultValue: 0.1 },
+  { key: 'deficiencia_iluminacion', label: 'Deficiencia de iluminación', emoji: '💡', effect: 'attractor', signo: 1, min: 0, max: 1, step: 0.05, defaultValue: 0.1 },
 ]
 
 const RULE_WEIGHT_TOTAL = 1
+// Mantener sincronizado con app/domain/models/regla_transicion.py.
 const WEIGHT_EPSILON = 0.001
 
 const CLIMATE_OPTIONS: ParameterOption[] = [
@@ -248,7 +262,8 @@ export const ScenariosPage = () => {
 
   const [ruleForm, setRuleForm] = useState({
     nombre_regla: '',
-    formula: 'atractivo = clima + seguridad',
+    formula: 'atractivo = Σ peso_k * signo_k * factor_k',
+    friccion_transito: 0,
     descripcion: '',
   })
   const [ruleWeights, setRuleWeights] = useState<ParameterRow[]>([
@@ -290,7 +305,9 @@ export const ScenariosPage = () => {
   const ruleWeightTotal = sumRows(ruleWeights)
   const ruleWeightSummary = ruleWeights.map((row) => ({
     ...row,
-    label: RULE_WEIGHT_OPTIONS.find((option) => option.key === row.key)?.label ?? row.key,
+    label: `${RULE_WEIGHT_OPTIONS.find((option) => option.key === row.key)?.emoji ?? ''} ${RULE_WEIGHT_OPTIONS.find((option) => option.key === row.key)?.label ?? row.key}`.trim(),
+    effect: RULE_WEIGHT_OPTIONS.find((option) => option.key === row.key)?.effect,
+    signo: RULE_WEIGHT_OPTIONS.find((option) => option.key === row.key)?.signo,
   }))
 
   const requestCreateRuleConfirmation = () => {
@@ -312,13 +329,14 @@ export const ScenariosPage = () => {
       nombre_regla: ruleForm.nombre_regla,
       formula: ruleForm.formula,
       descripcion: ruleForm.descripcion,
+      friccion_transito: ruleForm.friccion_transito,
       pesos,
     })
     setIsCreatingRule(false)
     if (res.ok) {
       toast.success('Regla creada')
       setIsRuleConfirmOpen(false)
-      setRuleForm({ nombre_regla: '', formula: 'atractivo = clima + seguridad', descripcion: '' })
+      setRuleForm({ nombre_regla: '', formula: 'atractivo = Σ peso_k * signo_k * factor_k', friccion_transito: 0, descripcion: '' })
       setRuleWeights([createParameterRow(RULE_WEIGHT_OPTIONS[0])])
       fetchAll().catch(() => null)
     } else {
@@ -413,6 +431,10 @@ export const ScenariosPage = () => {
                 <span>Fórmula</span>
                 <code>{ruleForm.formula}</code>
               </div>
+              <div className="scenario-confirm-field">
+                <span>Fricción de tránsito</span>
+                <strong>{ruleForm.friccion_transito.toFixed(2)}</strong>
+              </div>
 
               <div className="scenario-confirm-weights">
                 <div className="scenario-confirm-weights-header">
@@ -422,6 +444,7 @@ export const ScenariosPage = () => {
                 {ruleWeightSummary.map((weight) => (
                   <div key={weight.id} className="scenario-confirm-weight-row">
                     <span>{weight.label}</span>
+                    <small>{weight.effect === 'repulsor' ? 'Repulsor' : 'Atractor'} · signo {weight.signo ?? 1}</small>
                     <div className="scenario-confirm-weight-track" aria-hidden="true">
                       <span style={{ width: `${Math.max(0, Math.min(100, weight.value * 100))}%` }} />
                     </div>
@@ -460,9 +483,21 @@ export const ScenariosPage = () => {
           <div style={{ display: 'grid', gap: 10, marginTop: 12 }}>
             <input className="sheet-input" placeholder="Nombre" value={ruleForm.nombre_regla} onChange={(e) => setRuleForm({ ...ruleForm, nombre_regla: e.target.value })} />
             <input className="sheet-input" placeholder="Formula" value={ruleForm.formula} onChange={(e) => setRuleForm({ ...ruleForm, formula: e.target.value })} />
+            <label style={{ display: 'grid', gap: 6, fontSize: 12, color: 'var(--color-text-muted)' }}>
+              Fricción de tránsito (multiplicador independiente del atractivo)
+              <input
+                className="sheet-input"
+                type="number"
+                min={0}
+                max={5}
+                step={0.1}
+                value={ruleForm.friccion_transito}
+                onChange={(e) => setRuleForm({ ...ruleForm, friccion_transito: Math.max(0, Number(e.target.value) || 0) })}
+              />
+            </label>
             <ParameterBuilder
               title="Pesos de la regla"
-              description="Selecciona cada factor y ajusta su peso sin escribir JSON manualmente."
+              description="Selecciona factores atómicos; la suma de pesos debe ser 1 y la polaridad vive en cada factor."
               options={RULE_WEIGHT_OPTIONS}
               rows={ruleWeights}
               onChange={setRuleWeights}

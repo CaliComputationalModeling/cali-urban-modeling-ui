@@ -138,6 +138,8 @@ export const SimulationLoader = () => {
     }
   }
 
+  const handleCreateSimulationClick = handleSubmit(onCreateSubmit)
+
   // ── Estado conectado ───────────────────────────────────────────────────────
 
   if (isConnected) {
@@ -294,7 +296,7 @@ export const SimulationLoader = () => {
             <button type="button" onClick={() => setMode('connect')} className="sim-loader-btn" disabled={isSubmitting}>
               CANCELAR
             </button>
-            <button type="submit" disabled={isSubmitting} className="sim-loader-btn create">
+            <button type="button" onClick={handleCreateSimulationClick} disabled={isSubmitting} className="sim-loader-btn create">
               {isSubmitting
                 ? <><Loader2 size={15} style={{ animation: 'spin 0.8s linear infinite' }} /> EJECUTANDO...</>
                 : <><PlusCircle size={15} /> CREAR Y EJECUTAR</>}

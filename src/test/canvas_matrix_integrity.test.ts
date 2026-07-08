@@ -22,4 +22,17 @@ describe('backend matrix to canvas ImageData projection', () => {
     expect(Array.from(image.data.slice(northEastIndex, northEastIndex + 4))).toEqual(transparentColor)
     expect(Array.from(image.data.slice(southWestIndex, southWestIndex + 4))).toEqual(transparentColor)
   })
+
+  it('can mirror the matrix horizontally for west-east map alignment', () => {
+    const matrix = [
+      [0, 0, 100],
+      [0, 0, 0],
+      [0, 0, 0],
+    ]
+
+    const image = rasterizeMatrixToRgba(matrix, 100, 'density', 'mirrorX')
+    const maxDensityColor = colorForValue(100, 100, 'density')
+
+    expect(Array.from(image.data.slice(0, 4))).toEqual(maxDensityColor)
+  })
 })

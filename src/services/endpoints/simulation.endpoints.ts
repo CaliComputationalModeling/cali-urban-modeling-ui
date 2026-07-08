@@ -12,6 +12,7 @@ export interface CreateRuleRequest {
   nombre_regla: string
   formula: string
   pesos: Record<string, number>
+  friccion_transito?: number
   descripcion?: string
 }
 
@@ -20,7 +21,20 @@ export interface ReglaTransicionResponse {
   nombre_regla: string
   formula: string
   pesos: Record<string, number>
+  friccion_transito: number
   descripcion?: string
+  fecha_creacion?: string
+}
+
+export interface AtractorFisicoResponse {
+  id: number
+  tipo: string
+  lat: number
+  lon: number
+  intensidad: number
+  radio_influencia: number
+  descripcion?: string
+  activo: boolean
   fecha_creacion?: string
 }
 
@@ -141,6 +155,9 @@ export const simulationEndpoints = {
   // Listar reglas (útil para el selector)
   listRules: () =>
     http.get<ReglaTransicionResponse[]>('/api/reglas'),
+
+  listPhysicalAttractors: () =>
+    http.get<AtractorFisicoResponse[]>('/api/atractores-fisicos'),
 
   // 2. Actualizar pesos de una regla
   updateRuleWeights: (ruleId: number, data: UpdatePesosRequest) =>

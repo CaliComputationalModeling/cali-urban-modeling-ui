@@ -156,19 +156,6 @@
   flex-shrink: 0;
 }
 
-/* ── Map legend — density gradient ── */
-.sim-map-legend {
-  position: absolute;
-  bottom: 16px;
-  right: 16px;
-  z-index: 1000;
-  background: rgba(13, 16, 23, 0.85);
-  backdrop-filter: blur(8px);
-  padding: 10px 14px;
-  border-radius: 8px;
-  border: 1px solid var(--sim-border);
-}
-
 .sim-legend-title {
   font-size: 9px;
   font-weight: 700;
@@ -509,6 +496,7 @@
 .sim-btn-labeled:focus-visible,
 .sim-speed-option:focus-visible,
 .sim-layer-toggle button:focus-visible,
+.sim-map-legend-toggle:focus-visible,
 .sim-timeline-control button:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
@@ -1098,10 +1086,11 @@
 
 .sim-map-legend {
   position: absolute;
-  left: 12px;
+  right: 12px;
   bottom: 12px;
   z-index: 560;
-  min-width: 190px;
+  min-width: 210px;
+  max-width: min(260px, calc(100% - 24px));
   padding: 10px 12px;
   background: rgba(13, 16, 23, 0.86);
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -1112,8 +1101,19 @@
   backdrop-filter: blur(8px);
 }
 
+.sim-map-legend.is-collapsed {
+  min-width: 0;
+}
+
+.sim-map-legend-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .sim-map-legend-title {
-  margin: 0 0 7px;
+  margin: 0;
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.12em;
@@ -1121,18 +1121,42 @@
   text-transform: uppercase;
 }
 
-.sim-map-legend div {
+.sim-map-legend-toggle {
+  width: 24px;
+  height: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #e2e8f0;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.sim-map-legend-content {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.sim-map-legend-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 5px;
 }
 
-.sim-map-legend span {
+.sim-map-legend-row span {
   width: 14px;
   height: 9px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.18);
+  flex-shrink: 0;
+}
+
+.sim-map-legend-icons {
+  line-height: 1.35;
 }
 
 .probability-popup .leaflet-popup-content-wrapper {
@@ -1386,16 +1410,19 @@
   }
 
   .sim-map-legend {
-    left: 10px;
     right: 10px;
     bottom: 10px;
     min-width: 0;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 4px 10px;
+    max-width: calc(100% - 20px);
   }
 
-  .sim-map-legend-title {
+  .sim-map-legend-content {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px 10px;
+  }
+
+  .sim-map-legend-icons {
     grid-column: 1 / -1;
   }
 
