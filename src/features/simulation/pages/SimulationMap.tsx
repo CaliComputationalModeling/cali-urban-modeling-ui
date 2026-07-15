@@ -6,7 +6,6 @@ import {
   Polyline,
   GeoJSON,
   CircleMarker,
-  Marker,
   Tooltip,
 } from 'react-leaflet'
 import L from 'leaflet'
@@ -18,17 +17,14 @@ import type { PointOfInterest } from '@/shared/contracts/simulation.contract'
 import { mapsEndpoints } from '@/services/endpoints/maps.endpoints'
 import type { RutaMovilidad } from '@/services/endpoints/maps.endpoints'
 import { simulationEndpoints, type AtractorFisicoResponse } from '@/services/endpoints/simulation.endpoints'
-import { CanvasGridOverlay, type GridBounds } from '@/features/simulation/components/CanvasGridOverlay'
+import { AttractorCanvasOverlay, CanvasGridOverlay, type GridBounds } from '@/features/simulation/components/CanvasGridOverlay'
 import type { Feature, GeoJsonProperties, Geometry } from 'geojson'
 
 const LAT_MIN = 3.3
-const LAT_MAX = 3.55
+const LAT_MAX = 3.6
 const LON_MIN = -76.6
 const LON_MAX = -76.45
 const MALLA_BOUNDS: GridBounds = { north: LAT_MAX, south: LAT_MIN, west: LON_MIN, east: LON_MAX }
-// Calibracion fina de la capa del automata. Lat negativo = sur; lon positivo = oriente.
-const AUTOMATA_OFFSET_LAT = -0.003
-const AUTOMATA_OFFSET_LON = 0.002
 const COMUNAS_STYLE: L.PathOptions = {
   color: 'rgba(255,255,255,0.35)',
   weight: 1.5,
@@ -36,44 +32,6 @@ const COMUNAS_STYLE: L.PathOptions = {
   fillOpacity: 0.02,
   opacity: 0.9,
   dashArray: '4,4',
-}
-
-const PHYSICAL_ATTRACTOR_EMOJIS: Record<string, string> = {
-  fachadas_ciegas: '🧱',
-  vias_deterioradas: '🚧',
-  residuos: '🗑️',
-  deficiencia_iluminacion: '💡',
-}
-
-interface ClusteredPhysicalAttractor extends AtractorFisicoResponse {
-  count: number
-  tipos: string[]
-}
-
-function physicalAttractorIcon(emoji: string, count: number) {
-  return L.divIcon({
-    className: 'physical-attractor-marker',
-    html: `<span style="display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:30px;padding:0 6px;border-radius:999px;background:rgba(15,23,42,0.88);border:1px solid rgba(255,255,255,0.65);font-size:18px;box-shadow:0 8px 24px rgba(0,0,0,0.35);">${emoji}${count > 1 ? `<small style="font-size:10px;margin-left:3px;color:white;">${count}</small>` : ''}</span>`,
-    iconSize: [34, 34],
-    iconAnchor: [17, 17],
-  })
-}
-
-function clusterPhysicalAttractors(atractores: AtractorFisicoResponse[]): ClusteredPhysicalAttractor[] {
-  const clusters = new Map<string, ClusteredPhysicalAttractor>()
-  for (const atractor of atractores) {
-    const key = `${atractor.tipo}:${atractor.lat.toFixed(4)}:${atractor.lon.toFixed(4)}`
-    const current = clusters.get(key)
-    if (!current) {
-      clusters.set(key, { ...atractor, count: 1, tipos: [atractor.tipo] })
-      continue
-    }
-    current.count += 1
-    current.intensidad = Math.max(current.intensidad, atractor.intensidad)
-    current.radio_influencia = Math.max(current.radio_influencia, atractor.radio_influencia)
-    if (!current.tipos.includes(atractor.tipo)) current.tipos.push(atractor.tipo)
-  }
-  return Array.from(clusters.values())
 }
 
 function getComunaLabel(properties: GeoJsonProperties): string {
@@ -120,7 +78,7 @@ export const SimulationMap = () => {
         }
       })
       .catch(() => null)
-  }, [])
+  }, [simulationId])
 
   useEffect(() => {
     if (showComunasLayer) fetchComunasGeoJson().catch(() => null)
@@ -133,7 +91,7 @@ export const SimulationMap = () => {
         if (res.ok && res.data) setPhysicalAttractors(res.data)
       })
       .catch(() => null)
-  }, [])
+  }, [simulationId])
 
   useEffect(() => {
     if (!simulationId) return
@@ -166,11 +124,6 @@ export const SimulationMap = () => {
   }, [currentMatrix])
 
   const timelineValue = selectedStep ?? liveStepIndex
-  const clusteredPhysicalAttractors = useMemo(
-    () => clusterPhysicalAttractors(physicalAttractors.filter((a) => Number.isFinite(a.lat) && Number.isFinite(a.lon))),
-    [physicalAttractors],
-  )
-
   return (
     <div
       style={{
@@ -212,11 +165,15 @@ export const SimulationMap = () => {
             dataVersion={timelineValue}
             maxValue={maxDensity}
             enableProbabilityTooltip
-            orientation="mirrorX"
-            offsetLat={AUTOMATA_OFFSET_LAT}
-            offsetLon={AUTOMATA_OFFSET_LON}
+            orientation="mirrorY"
           />
         )}
+
+        <AttractorCanvasOverlay
+          bounds={MALLA_BOUNDS}
+          attractors={physicalAttractors}
+          visible={showAttractorsLayer}
+        />
 
         {routes.map((r, idx) => (
           <Polyline
@@ -272,34 +229,6 @@ export const SimulationMap = () => {
             </CircleMarker>
           ))}
 
-        {showAttractorsLayer && clusteredPhysicalAttractors.map((atractor) => {
-          const emoji = PHYSICAL_ATTRACTOR_EMOJIS[atractor.tipo] ?? '📍'
-          return (
-            <Marker
-              key={`physical-${atractor.id}-${atractor.lat}-${atractor.lon}`}
-              position={[atractor.lat, atractor.lon]}
-              icon={physicalAttractorIcon(emoji, atractor.count)}
-            >
-              <Tooltip sticky className="sim-tooltip">
-                <b>{emoji} {atractor.tipo}</b><br />
-                Intensidad: {atractor.intensidad.toFixed(2)}<br />
-                Radio: {atractor.radio_influencia} celdas<br />
-                {atractor.count > 1 && <>Atractores agrupados: {atractor.count}</>}
-              </Tooltip>
-              <Popup>
-                <b>{emoji} Atractor físico</b>
-                <br />
-                Tipo: {atractor.tipo}
-                <br />
-                Intensidad: {atractor.intensidad.toFixed(2)}
-                <br />
-                Radio: {atractor.radio_influencia} celdas
-                <br />
-                Coordenadas: {atractor.lat.toFixed(5)}, {atractor.lon.toFixed(5)}
-              </Popup>
-            </Marker>
-          )
-        })}
       </MapContainer>
 
       <div className="sim-layer-toggle">

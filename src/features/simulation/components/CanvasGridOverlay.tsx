@@ -24,6 +24,26 @@ interface CanvasGridOverlayProps {
   offsetLon?: number
 }
 
+export interface GeoreferencedAttractor {
+  tipo: string
+  lat: number
+  lon: number
+  activo?: boolean
+}
+
+interface AttractorCanvasOverlayProps {
+  bounds: GridBounds
+  attractors: GeoreferencedAttractor[]
+  visible: boolean
+}
+
+const ATTRACTOR_EMOJIS: Record<string, string> = {
+  fachadas_ciegas: '🧱',
+  vias_deterioradas: '🚧',
+  residuos: '🗑️',
+  deficiencia_iluminacion: '💡',
+}
+
 export function colorForValue(
   rawValue: number,
   maxValue: number,
@@ -118,6 +138,86 @@ function applyBoundsOffset(bounds: GridBounds, offsetLat: number, offsetLon: num
   }
 }
 
+export function projectAttractorToCanvas(
+  attractor: Pick<GeoreferencedAttractor, 'lat' | 'lon'>,
+  bounds: GridBounds,
+  width: number,
+  height: number,
+) {
+  const x = ((attractor.lon - bounds.west) / (bounds.east - bounds.west)) * width
+  const y = ((bounds.north - attractor.lat) / (bounds.north - bounds.south)) * height
+  return { x, y }
+}
+
+export function drawAttractors(
+  ctx: CanvasRenderingContext2D,
+  attractors: GeoreferencedAttractor[],
+  bounds: GridBounds,
+  width: number,
+  height: number,
+) {
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.font = '22px "Segoe UI Emoji", "Apple Color Emoji", sans-serif'
+
+  for (const attractor of attractors) {
+    if (attractor.activo === false || !Number.isFinite(attractor.lat) || !Number.isFinite(attractor.lon)) continue
+    if (attractor.lat < bounds.south || attractor.lat > bounds.north || attractor.lon < bounds.west || attractor.lon > bounds.east) continue
+
+    const { x, y } = projectAttractorToCanvas(attractor, bounds, width, height)
+    ctx.beginPath()
+    ctx.arc(x, y, 15, 0, Math.PI * 2)
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.9)'
+    ctx.fill()
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)'
+    ctx.lineWidth = 1
+    ctx.stroke()
+    ctx.fillText(ATTRACTOR_EMOJIS[attractor.tipo] ?? '📍', x, y + 1)
+  }
+}
+
+export const AttractorCanvasOverlay = ({ bounds, attractors, visible }: AttractorCanvasOverlayProps) => {
+  const map = useMap()
+
+  useEffect(() => {
+    if (!visible) return
+
+    const canvas = document.createElement('canvas')
+    canvas.dataset.testid = 'physical-attractors-canvas'
+    canvas.style.position = 'absolute'
+    canvas.style.pointerEvents = 'none'
+    canvas.style.zIndex = '550'
+    map.getPanes().overlayPane.appendChild(canvas)
+
+    const render = () => {
+      const northWest = map.latLngToLayerPoint([bounds.north, bounds.west])
+      const southEast = map.latLngToLayerPoint([bounds.south, bounds.east])
+      const width = Math.max(1, Math.round(Math.abs(southEast.x - northWest.x)))
+      const height = Math.max(1, Math.round(Math.abs(southEast.y - northWest.y)))
+      canvas.style.transform = `translate3d(${Math.min(northWest.x, southEast.x)}px, ${Math.min(northWest.y, southEast.y)}px, 0)`
+      canvas.style.width = `${width}px`
+      canvas.style.height = `${height}px`
+
+      const pixelRatio = window.devicePixelRatio || 1
+      canvas.width = Math.round(width * pixelRatio)
+      canvas.height = Math.round(height * pixelRatio)
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      ctx.scale(pixelRatio, pixelRatio)
+      drawAttractors(ctx, attractors, bounds, width, height)
+    }
+
+    render()
+    map.on('zoom move resize', render)
+    return () => {
+      map.off('zoom move resize', render)
+      canvas.remove()
+    }
+  }, [attractors, bounds, map, visible])
+
+  return null
+}
+
 export const CanvasGridOverlay = ({
   bounds,
   data,
@@ -176,8 +276,8 @@ export const CanvasGridOverlay = ({
 
       const rows = data.length
       const cols = data[0]?.length ?? 0
-      const row = Math.floor(((shiftedBounds.north - lat) / (shiftedBounds.north - shiftedBounds.south)) * rows)
-      const col = Math.floor(((lng - shiftedBounds.west) / (shiftedBounds.east - shiftedBounds.west)) * cols)
+      const row = Math.min(rows - 1, Math.floor(((shiftedBounds.north - lat) / (shiftedBounds.north - shiftedBounds.south)) * rows))
+      const col = Math.min(cols - 1, Math.floor(((lng - shiftedBounds.west) / (shiftedBounds.east - shiftedBounds.west)) * cols))
       const source = getSourceCell(row, col, rows, cols, orientation)
       const value = data[source.row]?.[source.col] ?? 0
       if (value <= 0) return

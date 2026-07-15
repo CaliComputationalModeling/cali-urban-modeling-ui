@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { colorForValue, rasterizeMatrixToRgba } from '@/features/simulation/components/CanvasGridOverlay'
+import { colorForValue, projectAttractorToCanvas, rasterizeMatrixToRgba } from '@/features/simulation/components/CanvasGridOverlay'
 
 describe('backend matrix to canvas ImageData projection', () => {
   it('keeps NumPy [row][col] order as JS y * width + x without transposition', () => {
@@ -23,16 +23,24 @@ describe('backend matrix to canvas ImageData projection', () => {
     expect(Array.from(image.data.slice(southWestIndex, southWestIndex + 4))).toEqual(transparentColor)
   })
 
-  it('can mirror the matrix horizontally for west-east map alignment', () => {
+  it('flips backend south-first rows vertically while preserving west-east alignment', () => {
     const matrix = [
-      [0, 0, 100],
+      [100, 0, 0],
       [0, 0, 0],
       [0, 0, 0],
     ]
 
-    const image = rasterizeMatrixToRgba(matrix, 100, 'density', 'mirrorX')
+    const image = rasterizeMatrixToRgba(matrix, 100, 'density', 'mirrorY')
     const maxDensityColor = colorForValue(100, 100, 'density')
 
-    expect(Array.from(image.data.slice(0, 4))).toEqual(maxDensityColor)
+    const southWestIndex = (2 * image.width) * 4
+    expect(Array.from(image.data.slice(southWestIndex, southWestIndex + 4))).toEqual(maxDensityColor)
+  })
+
+  it('projects geographic attractors with north at canvas y=0', () => {
+    const bounds = { north: 3.6, south: 3.3, west: -76.6, east: -76.45 }
+
+    expect(projectAttractorToCanvas({ lat: 3.6, lon: -76.6 }, bounds, 300, 600)).toEqual({ x: 0, y: 0 })
+    expect(projectAttractorToCanvas({ lat: 3.3, lon: -76.45 }, bounds, 300, 600)).toEqual({ x: 300, y: 600 })
   })
 })
