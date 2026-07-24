@@ -24,5 +24,9 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
+<<<<<<< HEAD
   "include": ["src", "playwright.config.ts", "e2e"]
+=======
+  "include": ["src", "vite-env.d.ts"]
+>>>>>>> 44fa15ef18c7ea319939bfa768140030a1bfe210
 }

@@ -19,6 +19,7 @@ export interface SimulationRule {
   wolfram_code?: number
 }
 
+<<<<<<< HEAD
 export interface Cell {
   position: { x: number; y: number }
   state: number
@@ -28,6 +29,52 @@ export interface Cell {
   }
 }
 
+=======
+export interface SimulationParameters {
+  climate?: number
+  security?: number
+  services?: number
+  mobility?: number
+  cellSize?: string
+  depth?: number
+  [key: string]: any
+}
+
+// Estado de simulación
+export enum SimulationStatus {
+  IDLE = "idle",
+  LOADING = "loading",
+  READY = "ready",
+  RUNNING = "running",
+  COMPLETED = "completed",
+  ERROR = "error",
+  APPROVED = "approved",
+  REJECTED = "rejected",
+}
+
+// Simulación completa
+export interface Simulation {
+  id: string
+  name: string
+  version: string
+  date: string
+  status: SimulationStatus
+  cells: Cell[]
+  config: SimulationConfig
+  currentIteration: number
+  totalIterations: number
+  parameters?: SimulationParameters
+  results?: SimulationResults
+}
+
+export interface SimulationResults {
+  estimatedPopulation: number
+  criticalZones: number
+  accuracy: number
+}
+
+// Para logging
+>>>>>>> 44fa15ef18c7ea319939bfa768140030a1bfe210
 export interface SimulationLog {
   timestamp: string
   level: 'info' | 'warning' | 'error' | 'success'
