@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useSimulationStore } from '@/store/simulationStore'
 import type { CreateSimulationRequest } from '@/shared/contracts/simulation.contract'
+import { POBLACION_CENSO_DANE_2019 } from '@/shared/constants/censoDane2019'
 
 interface Props {
   onClose: () => void
@@ -25,6 +26,10 @@ export const ExecutionModal = ({ onClose, initialVersionId = 1 }: Props) => {
       movilidad: 0.25,
       permanencia_base: 0.1,
       sensibilidad_atractivo: 1.0,
+      poblacion_inicial_por_comuna: POBLACION_CENSO_DANE_2019,
+      peso_capacidad: 0.0,
+      peso_atractores: 0.5,
+      p_exponente_distancia: 2.0,
     }
     await executeSimulationAsync(payload)
   }

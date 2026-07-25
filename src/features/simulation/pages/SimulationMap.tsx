@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState } from 'react'
+import { useMemo, useEffect, useState, useCallback } from 'react'
 import {
   MapContainer,
   TileLayer,
@@ -17,7 +17,8 @@ import type { PointOfInterest } from '@/shared/contracts/simulation.contract'
 import { mapsEndpoints } from '@/services/endpoints/maps.endpoints'
 import type { RutaMovilidad } from '@/services/endpoints/maps.endpoints'
 import { simulationEndpoints, type AtractorFisicoResponse } from '@/services/endpoints/simulation.endpoints'
-import { AttractorCanvasOverlay, CanvasGridOverlay, type GridBounds } from '@/features/simulation/components/CanvasGridOverlay'
+import { CanvasGridOverlay, DiscreteGridOverlay, percentile95, type GridBounds } from '@/features/simulation/components/CanvasGridOverlay'
+import { AttractorMarkersLayer } from '@/features/simulation/components/AttractorMarkersLayer'
 import type { Feature, GeoJsonProperties, Geometry } from 'geojson'
 
 const LAT_MIN = 3.3
@@ -39,6 +40,13 @@ function getComunaLabel(properties: GeoJsonProperties): string {
   return rawValue ? `Comuna ${String(rawValue).replace(/^comuna\s+/i, '')}` : 'Comuna'
 }
 
+function getComunaNumber(properties: GeoJsonProperties): number | null {
+  const rawValue = properties?.NUMERO_COMUNA ?? properties?.numero_comuna ?? properties?.comuna ?? properties?.COMUNA
+  if (rawValue === null || rawValue === undefined) return null
+  const num = Number(rawValue)
+  return Number.isFinite(num) ? num : null
+}
+
 function bindComunaTooltip(feature: Feature<Geometry, GeoJsonProperties>, layer: L.Layer) {
   layer.bindTooltip(getComunaLabel(feature.properties), {
     permanent: false,
@@ -53,8 +61,10 @@ export const SimulationMap = () => {
   const loadedPasos = useSimulationStore((s) => s.loadedPasos)
   const showAgentsLayer = useSimulationStore((s) => s.showAgentsLayer)
   const showAttractorsLayer = useSimulationStore((s) => s.showAttractorsLayer)
+  const showAutomataLayer = useSimulationStore((s) => s.showAutomataLayer)
   const toggleAgentsLayer = useSimulationStore((s) => s.toggleAgentsLayer)
   const toggleAttractorsLayer = useSimulationStore((s) => s.toggleAttractorsLayer)
+  const toggleAutomataLayer = useSimulationStore((s) => s.toggleAutomataLayer)
   const showComunasLayer = useMapsStore((s) => s.showComunasLayer)
   const comunasGeoJson = useMapsStore((s) => s.comunasGeoJson)
   const toggleComunasLayer = useMapsStore((s) => s.toggleComunasLayer)
@@ -119,11 +129,53 @@ export const SimulationMap = () => {
 
   const maxDensity = useMemo(() => {
     if (!currentMatrix || currentMatrix.length === 0) return 1
-    const values = currentMatrix.flat().filter(Number.isFinite)
-    return Math.max(...values) || 1
+    const p95 = percentile95(currentMatrix)
+    return p95 > 0 ? p95 : 1
   }, [currentMatrix])
 
+  const fixedReference = useMemo(() => {
+    if (loadedPasos.length === 0) return undefined
+    const paso0 = loadedPasos[0]
+    if (!paso0?.densidad) return undefined
+    let max = 0
+    for (const row of paso0.densidad) {
+      if (!row) continue
+      for (const v of row) {
+        if (v > max) max = v
+      }
+    }
+    return max > 0 ? max : undefined
+  }, [loadedPasos])
+
   const timelineValue = selectedStep ?? liveStepIndex
+
+  const currentPasoPoblacion = useMemo(() => {
+    const paso = loadedPasos[timelineValue]
+    return paso?.poblacion_por_comuna ?? {}
+  }, [loadedPasos, timelineValue])
+
+  const comunaOnEachFeature = useCallback(
+    (feature: Feature<Geometry, GeoJsonProperties>, layer: L.Layer) => {
+      const label = getComunaLabel(feature.properties)
+      layer.bindTooltip(label, {
+        permanent: false,
+        direction: 'center',
+        className: 'comuna-tooltip',
+      })
+      const comunaNum = getComunaNumber(feature.properties)
+      if (comunaNum !== null) {
+        const poblacion = Number(currentPasoPoblacion[comunaNum] ?? 0)
+        const popupContent = `
+          <div style="font-size:12px;line-height:1.6">
+            <strong>${label}</strong><br/>
+            Población: <span style="color:#0ea5e9;font-weight:600">${Math.round(poblacion).toLocaleString()}</span>
+          </div>
+        `
+        layer.bindPopup(popupContent, { className: 'comuna-popup' })
+      }
+    },
+    [currentPasoPoblacion],
+  )
   return (
     <div
       style={{
@@ -151,9 +203,10 @@ export const SimulationMap = () => {
 
         {showComunasLayer && comunasGeoJson && (
           <GeoJSON
+            key={`comunas-${timelineValue}`}
             data={comunasGeoJson}
             style={COMUNAS_STYLE}
-            onEachFeature={bindComunaTooltip}
+            onEachFeature={comunaOnEachFeature}
           />
         )}
 
@@ -166,11 +219,21 @@ export const SimulationMap = () => {
             maxValue={maxDensity}
             enableProbabilityTooltip
             orientation="mirrorY"
+            useP95
+            fixedReference={fixedReference}
           />
         )}
 
-        <AttractorCanvasOverlay
+        <DiscreteGridOverlay
           bounds={MALLA_BOUNDS}
+          data={currentMatrix}
+          visible={showAutomataLayer}
+          dataVersion={timelineValue}
+          orientation="mirrorY"
+          fixedReference={fixedReference}
+        />
+
+        <AttractorMarkersLayer
           attractors={physicalAttractors}
           visible={showAttractorsLayer}
         />
@@ -235,20 +298,28 @@ export const SimulationMap = () => {
         <button
           className={showAgentsLayer ? 'active' : ''}
           onClick={toggleAgentsLayer}
+          data-testid="toggle-heatmap"
         >
-          Ver Agentes
+          Heatmap (p95)
+        </button>
+        <button
+          className={showAutomataLayer ? 'active' : ''}
+          onClick={toggleAutomataLayer}
+          data-testid="toggle-automata"
+        >
+          Autómata (discreto)
         </button>
         <button
           className={showAttractorsLayer ? 'active' : ''}
           onClick={toggleAttractorsLayer}
         >
-          Ver Atractores
+          Atractores
         </button>
         <button
           className={showComunasLayer ? 'active' : ''}
           onClick={toggleComunasLayer}
         >
-          📍 Ver Comunas
+          📍 Comunas
         </button>
       </div>
 
@@ -268,9 +339,12 @@ export const SimulationMap = () => {
 
         {!isLegendCollapsed && (
           <div className="sim-map-legend-content">
-            <div className="sim-map-legend-row"><span style={{ background: '#fef08a' }} /> Baja densidad</div>
-            <div className="sim-map-legend-row"><span style={{ background: '#f97316' }} /> Media densidad</div>
-            <div className="sim-map-legend-row"><span style={{ background: '#b91c1c' }} /> Alta densidad</div>
+            <div className="sim-map-legend-row"><span style={{ background: '#fef08a' }} /> Heatmap — baja (p95)</div>
+            <div className="sim-map-legend-row"><span style={{ background: '#f97316' }} /> Heatmap — media (p95)</div>
+            <div className="sim-map-legend-row"><span style={{ background: '#b91c1c' }} /> Heatmap — alta (p95)</div>
+            <div className="sim-map-legend-row"><span style={{ background: '#bfdbfe' }} /> Autómata — baja</div>
+            <div className="sim-map-legend-row"><span style={{ background: '#fbbf24' }} /> Autómata — media</div>
+            <div className="sim-map-legend-row"><span style={{ background: '#dc2626' }} /> Autómata — alta</div>
             <div className="sim-map-legend-row"><span style={{ background: '#0ea5e9' }} /> POI</div>
             <div className="sim-map-legend-row sim-map-legend-icons">🧱 🚧 🗑️ 💡 Atractores físicos</div>
           </div>

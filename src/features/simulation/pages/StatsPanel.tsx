@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import {
   Activity,
   Users,
@@ -98,11 +99,13 @@ export const StatsPanel = () => {
   const status = useSimulationStore((s) => s.status)
   const currentGeneration = useSimulationStore((s) => s.currentGeneration)
   const history = useSimulationStore((s) => s.history)
+  const loadedPasos = useSimulationStore((s) => s.loadedPasos)
 
   const hasData = currentGeneration > 0 && urbanState !== null
 
   // Datos actuales desde UrbanState del backend
   const totalAgentes = urbanState?.total_agentes ?? 0
+  const totalAgentesFormateado = `${Math.round(totalAgentes).toLocaleString()}`
   const maxDensidad = urbanState?.max_densidad ?? 0
   const celdasOcupadas = urbanState?.celdas_ocupadas ?? 0
   const enTransito = urbanState?.en_transito ?? 0
@@ -115,7 +118,25 @@ export const StatsPanel = () => {
   const total = totalAgentes > 0 ? totalAgentes : 1
   const pct = (n: number) => ((n / total) * 100).toFixed(1) + '%'
 
-  // Configuración de estado actual
+  // Población por comuna del paso actual (consumido del backend)
+  const currentPaso = loadedPasos.find((p) => p.tiempo === currentGeneration)
+    ?? loadedPasos[loadedPasos.length - 1]
+  const poblacionPorComuna = currentPaso?.poblacion_por_comuna ?? {}
+
+  const totalComunasActual = useMemo(() => {
+    return Object.values(poblacionPorComuna).reduce((sum, value) => sum + Number(value ?? 0), 0)
+  }, [poblacionPorComuna])
+
+  const lineData = useMemo(() => {
+    return loadedPasos.map((paso) => {
+      const values: Record<string, number> = { paso: paso.tiempo }
+      ;[3, 9, 10, 4, 19].forEach((comuna) => {
+        values[`comuna-${comuna}`] = Number(paso.poblacion_por_comuna?.[comuna] ?? 0)
+      })
+      return values
+    })
+  }, [loadedPasos])
+
   const statusCfg = STATUS_CONFIG[status]
 
   return (
@@ -134,7 +155,7 @@ export const StatsPanel = () => {
       <Metric
         icon={Users}
         label="Personas en el área simulada"
-        value={totalAgentes.toLocaleString()}
+        value={totalAgentesFormateado}
         color="var(--color-accent)"
         sub={`Distribuidas en ${celdasOcupadas} zonas del mapa`}
         testId="stats-total-population"
@@ -275,6 +296,52 @@ export const StatsPanel = () => {
           <div className="sim-spark-empty">
             <p>Sin datos aún — inicia la simulación para ver la evolución</p>
           </div>
+        )}
+      </div>
+
+      {/* Población por comuna por generación */}
+      <div className="sim-metric" data-testid="stats-poblacion-por-comuna">
+        <div className="sim-metric-header">
+          <Database size={13} color="#0ea5e9" />
+          <span className="sim-metric-label">Población por comuna (paso {currentPaso?.tiempo ?? '—'})</span>
+        </div>
+        {Object.keys(poblacionPorComuna).length === 0 ? (
+          <p className="sim-urban-empty">Sin datos por comuna en este paso.</p>
+        ) : (
+          <>
+            <div className="sim-urban-rows" style={{ marginBottom: 12 }}>
+              {Array.from({ length: 22 }, (_, idx) => idx + 1).map((comuna) => {
+                const valor = Number(poblacionPorComuna[comuna] ?? 0)
+                return (
+                  <div key={comuna} className="sim-urban-row">
+                    <span className="sim-urban-label">Comuna {comuna}</span>
+                    <span className="sim-urban-value" style={{ color: '#0ea5e9' }}>
+                      {valor.toLocaleString()}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+            <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 10 }}>
+              Suma comprobada: {Math.round(totalComunasActual).toLocaleString()} ·
+              {' '}Total del paso: {Math.round(Number(currentPaso?.total_poblacion ?? 0)).toLocaleString()}
+            </div>
+            <div style={{ height: 140 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={lineData} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e2736" />
+                  <XAxis dataKey="paso" tick={{ fontSize: 9, fill: '#475569' }} />
+                  <YAxis tick={{ fontSize: 9, fill: '#475569' }} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Line type="monotone" dataKey="comuna-3" name="Comuna 3" stroke="#0ea5e9" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="comuna-9" name="Comuna 9" stroke="#22c55e" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="comuna-10" name="Comuna 10" stroke="#f59e0b" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="comuna-4" name="Comuna 4" stroke="#f97316" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="comuna-19" name="Comuna 19" stroke="#ef4444" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </>
         )}
       </div>
 

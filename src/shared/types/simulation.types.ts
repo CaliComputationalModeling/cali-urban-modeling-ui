@@ -19,7 +19,6 @@ export interface SimulationRule {
   wolfram_code?: number
 }
 
-<<<<<<< HEAD
 export interface Cell {
   position: { x: number; y: number }
   state: number
@@ -29,7 +28,6 @@ export interface Cell {
   }
 }
 
-=======
 export interface SimulationParameters {
   climate?: number
   security?: number
@@ -74,14 +72,13 @@ export interface SimulationResults {
 }
 
 // Para logging
->>>>>>> 44fa15ef18c7ea319939bfa768140030a1bfe210
 export interface SimulationLog {
   timestamp: string
   level: 'info' | 'warning' | 'error' | 'success'
   message: string
 }
 
-export interface Simulation {
+export interface BackendSimulation {
   simulation_id: string
   name: string
   description?: string
@@ -120,7 +117,7 @@ export interface SimulationProgress {
   log_reciente?: string
 }
 
-export interface SimulationResults {
+export interface BackendSimulationResults {
   simulation_id: string
   estado: string
   generaciones_ejecutadas: number
@@ -153,6 +150,14 @@ export interface CreateSimulationFormData {
   movilidad: number
   permanencia_base: number
   sensibilidad_atractivo: number
+
+  // ────────────────────────────────────────────────
+  // DISTRIBUCIÓN INICIAL POR COMUNA (Censo DANE 2019)
+  // ────────────────────────────────────────────────
+  poblacion_inicial_por_comuna?: Record<number, number>
+  peso_capacidad?: number
+  peso_atractores?: number
+  p_exponente_distancia?: number
 
   // ────────────────────────────────────────────────
   // METADATOS (opcionales - solo para UI)

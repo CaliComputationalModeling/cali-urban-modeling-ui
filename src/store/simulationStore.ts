@@ -1,6 +1,6 @@
-<<<<<<< HEAD
 import { create } from 'zustand'
 import { observationEndpoints, simulationEndpoints } from '@/services/endpoints'
+import { POBLACION_CENSO_DANE_2019 } from '@/shared/constants/censoDane2019'
 import {
   type SimulationId,
   type SimulationStatus,
@@ -37,7 +37,6 @@ function formatBackendDetail(data: unknown, fallback: string): string {
     .join(' | ')
 }
 
-// ─── Convierte PasoSimulacionDTO → GeoJsonResponse ────────────────────────────
 const LAT_MIN = 3.3, LAT_MAX = 3.6, LON_MIN = -76.6, LON_MAX = -76.45
 
 function pasoToGeoJson(paso: PasoSimulacionDTO): GeoJsonResponse {
@@ -82,7 +81,6 @@ function pasoToUrbanState(paso: PasoSimulacionDTO, isLast: boolean): UrbanState 
   return { generacion: paso.tiempo, total_agentes: paso.total_poblacion, max_densidad, celdas_ocupadas, ...distribution, completada: isLast }
 }
 
-// ─── Timer ────────────────────────────────────────────────────────────────────
 let tickTimer: ReturnType<typeof setTimeout> | null = null
 function clearTick() { if (tickTimer !== null) { clearTimeout(tickTimer); tickTimer = null } }
 
@@ -330,7 +328,6 @@ function isFailedStatus(status: string): boolean {
   return normalized === 'fallido' || normalized === 'failed' || normalized === 'error'
 }
 
-// ─── Store types ──────────────────────────────────────────────────────────────
 export interface SimulationStoreState {
   simulationId: SimulationId | null
   ejecucionId: string | null
@@ -349,7 +346,8 @@ export interface SimulationStoreState {
   visualLayer: SimulationLayerMode
   showAgentsLayer: boolean
   showAttractorsLayer: boolean
-  loadedPasos: PasoSimulacionDTO[]   // ← pasos cargados del backend
+  showAutomataLayer: boolean
+  loadedPasos: PasoSimulacionDTO[]
 
   createSimulation: (config: CreateSimulationFormData) => Promise<void>
   executeSimulationAsync: (payload: CreateSimulationRequest) => Promise<void>
@@ -365,6 +363,7 @@ export interface SimulationStoreState {
   setVisualLayer: (layer: SimulationLayerMode) => void
   toggleAgentsLayer: () => void
   toggleAttractorsLayer: () => void
+  toggleAutomataLayer: () => void
 }
 
 const INITIAL_STATE = {
@@ -385,13 +384,12 @@ const INITIAL_STATE = {
   visualLayer: 'density' as SimulationLayerMode,
   showAgentsLayer: true,
   showAttractorsLayer: true,
+  showAutomataLayer: true,
   loadedPasos: [],
 }
 
-// ─── Índice del paso actual (fuera del store para evitar re-renders) ───────────
 let currentPasoIndex = 0
 
-// ─── Helper: carga pasos y los guarda en el store ─────────────────────────────
 async function loadPasosIntoStore(
   ejecucionId: string,
   set: (partial: Partial<SimulationStoreState>) => void
@@ -417,7 +415,6 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
   return {
     ...INITIAL_STATE,
 
-    // ── createSimulation: ejecuta y carga pasos ────────────────────────────────
     createSimulation: async (config: CreateSimulationFormData) => {
       await get().startAsyncSimulation({
         version_escenario_id: config.version_escenario_id,
@@ -426,10 +423,13 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
         movilidad: config.movilidad,
         permanencia_base: config.permanencia_base,
         sensibilidad_atractivo: config.sensibilidad_atractivo,
+        poblacion_inicial_por_comuna: config.poblacion_inicial_por_comuna,
+        peso_capacidad: config.peso_capacidad,
+        peso_atractores: config.peso_atractores,
+        p_exponente_distancia: config.p_exponente_distancia,
       })
     },
 
-    // ── executeSimulationAsync: mismo flujo, usado por ExecutionModal ──────────
     executeSimulationAsync: async (payload: CreateSimulationRequest) => {
       await get().startAsyncSimulation(payload)
     },
@@ -439,9 +439,14 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
       clearPolling()
       resetMetricSources()
       currentPasoIndex = 0
+      const enrichedPayload: CreateSimulationRequest = {
+        ...payload,
+        poblacion_inicial_por_comuna:
+          payload.poblacion_inicial_por_comuna ?? POBLACION_CENSO_DANE_2019,
+      }
       set({
         error: null,
-        pollingStatus: 'Iniciando simulación...',
+        pollingStatus: 'Iniciando simulaci\u00f3n...',
         simulationProgress: null,
         ejecucionId: null,
         simulationId: null,
@@ -454,14 +459,14 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
       })
 
       try {
-        const res = await simulationEndpoints.createSimulation(payload)
+        const res = await simulationEndpoints.createSimulation(enrichedPayload)
 
         if (!res.ok) {
           if (res.status === 403) { set({ error: 'Sin permisos', pollingStatus: null, backendConnected: true }); return }
-          if (res.status === 422 || res.status === 400) { set({ error: formatBackendDetail(res.data, 'Error de validación'), pollingStatus: null, backendConnected: true }); return }
-          throw new Error(formatBackendDetail(res.data, 'Error al iniciar simulación'))
+          if (res.status === 422 || res.status === 400) { set({ error: formatBackendDetail(res.data, 'Error de validaci\u00f3n'), pollingStatus: null, backendConnected: true }); return }
+          throw new Error(formatBackendDetail(res.data, 'Error al iniciar simulaci\u00f3n'))
         }
-        if (!res.data) throw new Error('Respuesta vacía del servidor')
+        if (!res.data) throw new Error('Respuesta vac\u00eda del servidor')
 
         if (isExecutionInit(res.data)) {
           const executionId = String(res.data.ejecucion_id)
@@ -469,7 +474,7 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
             simulationId: createSimulationId(executionId),
             ejecucionId: executionId,
             status: 'idle',
-            pollingStatus: res.data.mensaje ?? 'Simulación en ejecución...',
+            pollingStatus: res.data.mensaje ?? 'Simulaci\u00f3n en ejecuci\u00f3n...',
             simulationProgress: {
               ejecucion_id: executionId,
               estado: res.data.estado ?? 'pendiente',
@@ -497,13 +502,13 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
 
               if (isFailedStatus(progress.estado)) {
                 clearPolling()
-                set({ status: 'error', error: progress.mensaje ?? 'La simulación falló', pollingStatus: null })
+                set({ status: 'error', error: progress.mensaje ?? 'La simulaci\u00f3n fall\u00f3', pollingStatus: null })
                 return
               }
 
               if (isCompletedStatus(progress.estado)) {
                 clearPolling()
-                set({ pollingStatus: 'Cargando pasos de simulación...' })
+                set({ pollingStatus: 'Cargando pasos de simulaci\u00f3n...' })
                 await loadPasosIntoStore(executionId, set)
                 set({ pollingStatus: null, simulationProgress: { ...progress, progreso: 100 }, status: 'idle' })
               }
@@ -535,12 +540,11 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
       }
     },
 
-    // ── setSimulationId: conectar a ejecución existente y cargar sus pasos ─────
     setSimulationId: (id: SimulationId) => {
       clearPolling()
       resetMetricSources()
       currentPasoIndex = 0
-      set({ simulationId: id, ejecucionId: String(id), status: 'idle', currentGeneration: 0, geojson: null, urbanState: null, history: [], loadedPasos: [], error: null, retryCount: 0, backendConnected: true, pollingStatus: 'Cargando pasos de simulación...', simulationProgress: null })
+      set({ simulationId: id, ejecucionId: String(id), status: 'idle', currentGeneration: 0, geojson: null, urbanState: null, history: [], loadedPasos: [], error: null, retryCount: 0, backendConnected: true, pollingStatus: 'Cargando pasos de simulaci\u00f3n...', simulationProgress: null })
       loadPasosIntoStore(String(id), set).catch(() => null)
         .finally(() => set({ pollingStatus: null }))
     },
@@ -556,7 +560,7 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
     startSimulation: () => {
       const { simulationId, status, loadedPasos } = get()
       if (!simulationId || status === 'running') return
-      if (loadedPasos.length === 0) { set({ error: 'No hay pasos cargados. Ejecuta una simulación primero.' }); return }
+      if (loadedPasos.length === 0) { set({ error: 'No hay pasos cargados. Ejecuta una simulaci\u00f3n primero.' }); return }
       set({ status: 'running', error: null, retryCount: 0, backendConnected: true })
       void get().stepSimulation().then(() => {
         if (get().status === 'running') scheduleTick()
@@ -568,7 +572,6 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
       if (get().status === 'running') set({ status: 'paused' })
     },
 
-    // ── stepSimulation: avanza 1 paso en loadedPasos ──────────────────────────
     stepSimulation: async () => {
       const { loadedPasos, status } = get()
       if (status === 'completed') return
@@ -629,296 +632,29 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
     },
 
     toggleAgentsLayer: () => {
-      set((state) => ({ showAgentsLayer: !state.showAgentsLayer }))
+      set((state) => {
+        const next = !state.showAgentsLayer
+        return {
+          showAgentsLayer: next,
+          // Mutuamente excluyente con autómata discreto
+          showAutomataLayer: next ? false : state.showAutomataLayer,
+        }
+      })
     },
 
     toggleAttractorsLayer: () => {
       set((state) => ({ showAttractorsLayer: !state.showAttractorsLayer }))
     },
+
+    toggleAutomataLayer: () => {
+      set((state) => {
+        const next = !state.showAutomataLayer
+        return {
+          showAutomataLayer: next,
+          // Mutuamente excluyente con heatmap
+          showAgentsLayer: next ? false : state.showAgentsLayer,
+        }
+      })
+    },
   }
 })
-=======
-/**
- * Simulation Store - Zustand
- * 
- * Maneja el estado global de simulaciones:
- * - Simulación actual
- * - Lista de simulaciones
- * - Estado de ejecución
- * - Logs y errores
- * - Sincronización con API
- * 
- * Type-safe con DTOs de API
- */
-
-import { create } from 'zustand'
-import { simulationService } from '@/services/domain'
-import type {
-  SimulationResponseDTO,
-  SimulationCreateRequestDTO,
-  SimulationRunRequestDTO,
-} from '@/shared/types/api.dtos'
-
-export interface SimulationLog {
-  timestamp: string
-  level: 'info' | 'warning' | 'error' | 'success'
-  message: string
-}
-
-export interface SimulationState {
-  // Estado
-  currentSimulation: SimulationResponseDTO | null
-  simulations: SimulationResponseDTO[]
-  isRunning: boolean
-  isLoading: boolean
-  error: string | null
-  logs: SimulationLog[]
-  totalCount: number
-  currentIteration: number
-  totalIterations: number
-  progress: number
-  
-  // Acciones
-  loadSimulation: (id: string) => Promise<void>
-  loadSimulations: (limit?: number, offset?: number) => Promise<void>
-  createSimulation: (request: SimulationCreateRequestDTO) => Promise<SimulationResponseDTO>
-  runSimulation: (generations: number) => Promise<void>
-  runStep: (generations?: number) => Promise<void>
-  resetSimulation: () => Promise<void>
-  deleteSimulation: (id: string) => Promise<void>
-  setCurrentSimulation: (simulation: SimulationResponseDTO | null) => void
-  clearError: () => void
-  clearLogs: () => void
-  addLog: (message: string, level?: SimulationLog['level']) => void
-  updateProgress: (current: number, total: number) => void
-  fetchCells: () => Promise<void>
-  startSimulation: () => void
-  stopSimulation: () => void
-}
-
-export const useSimulationStore = create<SimulationState>((set, get) => ({
-  // Estado inicial
-  currentSimulation: null,
-  simulations: [],
-  isRunning: false,
-  isLoading: false,
-  error: null,
-  logs: [],
-  totalCount: 0,
-  currentIteration: 0,
-  totalIterations: 0,
-  progress: 0,
-
-  // Acciones
-  loadSimulation: async (id) => {
-    set({ isLoading: true, error: null })
-
-    try {
-      const simulation = await simulationService.getSimulation(id)
-      set({ currentSimulation: simulation, isLoading: false })
-      get().addLog(`Simulación cargada: ${simulation.name}`, 'success')
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error loading simulation'
-      set({ error: message, isLoading: false })
-      get().addLog(message, 'error')
-      throw err
-    }
-  },
-
-  loadSimulations: async (limit = 10, offset = 0) => {
-    set({ isLoading: true, error: null })
-
-    try {
-      const result = await simulationService.listSimulations(limit, offset)
-      set({
-        simulations: result.items,
-        totalCount: result.total,
-        isLoading: false,
-      })
-      get().addLog(`${result.items.length} simulaciones cargadas`, 'success')
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error loading simulations'
-      set({ error: message, isLoading: false })
-      get().addLog(message, 'error')
-      throw err
-    }
-  },
-
-  createSimulation: async (request) => {
-    set({ isLoading: true, error: null })
-
-    try {
-      const simulation = await simulationService.createSimulation(request)
-      set((state) => ({
-        simulations: [simulation, ...state.simulations],
-        currentSimulation: simulation,
-        isLoading: false,
-      }))
-      get().addLog(`Simulación creada: ${simulation.name}`, 'success')
-      return simulation
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error creating simulation'
-      set({ error: message, isLoading: false })
-      get().addLog(message, 'error')
-      throw err
-    }
-  },
-
-  runSimulation: async (generations) => {
-    const current = get().currentSimulation
-    if (!current) {
-      throw new Error('No simulation selected')
-    }
-
-    set({ isRunning: true, error: null })
-
-    try {
-      const request: SimulationRunRequestDTO = { generations }
-      const result = await simulationService.runSimulationStep(current.simulation_id, request)
-
-      // Actualizar simulación actual con nuevos datos
-      set((state) => ({
-        currentSimulation: state.currentSimulation
-          ? { ...state.currentSimulation, generation: result.generation }
-          : null,
-        isRunning: false,
-      }))
-
-      get().addLog(
-        `Simulación ejecutada: Gen ${result.generation}, Células vivas: ${result.alive_cells}`,
-        'success'
-      )
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error running simulation'
-      set({ error: message, isRunning: false })
-      get().addLog(message, 'error')
-      throw err
-    }
-  },
-
-  resetSimulation: async () => {
-    const current = get().currentSimulation
-    if (!current) {
-      throw new Error('No simulation selected')
-    }
-
-    set({ isLoading: true, error: null })
-
-    try {
-      const simulation = await simulationService.resetSimulation(current.simulation_id)
-      set({ currentSimulation: simulation, isLoading: false })
-      get().addLog('Simulación reseteada', 'success')
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error resetting simulation'
-      set({ error: message, isLoading: false })
-      get().addLog(message, 'error')
-      throw err
-    }
-  },
-
-  deleteSimulation: async (id) => {
-    set({ isLoading: true, error: null })
-
-    try {
-      await simulationService.deleteSimulation(id)
-      set((state) => ({
-        simulations: state.simulations.filter((s) => s.simulation_id !== id),
-        currentSimulation: state.currentSimulation?.simulation_id === id ? null : state.currentSimulation,
-        isLoading: false,
-      }))
-      get().addLog('Simulación eliminada', 'success')
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error deleting simulation'
-      set({ error: message, isLoading: false })
-      get().addLog(message, 'error')
-      throw err
-    }
-  },
-
-  setCurrentSimulation: (simulation) => set({ currentSimulation: simulation }),
-
-  clearError: () => set({ error: null }),
-
-  clearLogs: () => set({ logs: [] }),
-
-  addLog: (message, level = 'info') => {
-    const timestamp = new Date().toLocaleTimeString()
-    const log: SimulationLog = { timestamp, level, message }
-    set((state) => ({
-      logs: [...state.logs, log].slice(-100),
-    }))
-  },
-
-  updateProgress: (current, total) => {
-    const progress = total > 0 ? (current / total) * 100 : 0
-    set({ currentIteration: current, totalIterations: total, progress })
-  },
-
-  fetchCells: async () => {
-    const current = get().currentSimulation
-    if (!current) {
-      throw new Error('No simulation selected')
-    }
-
-    set({ isLoading: true, error: null })
-
-    try {
-      const simulation = await simulationService.getSimulation(current.simulation_id)
-      set({ currentSimulation: simulation, isLoading: false })
-      get().addLog('Células cargadas', 'success')
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error fetching cells'
-      set({ error: message, isLoading: false })
-      get().addLog(message, 'error')
-      throw err
-    }
-  },
-
-  runStep: async (generations = 1) => {
-    const current = get().currentSimulation
-    if (!current) {
-      throw new Error('No simulation selected')
-    }
-
-    set({ isRunning: true, error: null })
-
-    try {
-      const request: SimulationRunRequestDTO = { generations }
-      const result = await simulationService.runSimulationStep(current.simulation_id, request)
-
-      set((state) => ({
-        currentSimulation: state.currentSimulation
-          ? {
-              ...state.currentSimulation,
-              generation: result.generation,
-              cells: result.cells,
-            }
-          : null,
-        isRunning: false,
-        currentIteration: result.generation,
-      }))
-
-      get().addLog(
-        `Paso ejecutado: Gen ${result.generation}, Células vivas: ${result.alive_cells}`,
-        'success'
-      )
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error executing step'
-      set({ error: message, isRunning: false })
-      get().addLog(message, 'error')
-      throw err
-    }
-  },
-
-  startSimulation: () => {
-    set({ isRunning: true })
-    get().addLog('Simulación iniciada', 'success')
-  },
-
-  stopSimulation: () => {
-    set({ isRunning: false })
-    get().addLog('Simulación detenida', 'info')
-  },
-}))
-
->>>>>>> 44fa15ef18c7ea319939bfa768140030a1bfe210

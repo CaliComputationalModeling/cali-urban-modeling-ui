@@ -86,6 +86,7 @@ export interface PasoSimulacionDTO {
   densidad: number[][]
   atractivo: number[][]
   total_poblacion: number
+  poblacion_por_comuna?: Record<number, number>
 }
 
 export interface EjecucionSimulacionResponse {

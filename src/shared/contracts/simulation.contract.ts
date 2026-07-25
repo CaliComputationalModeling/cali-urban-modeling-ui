@@ -97,6 +97,11 @@ export interface CreateSimulationRequest {
   movilidad: number
   permanencia_base: number
   sensibilidad_atractivo: number
+  poblacion_inicial_por_comuna?: Record<number, number>
+  peso_capacidad?: number
+  peso_atractores?: number
+  p_exponente_distancia?: number
+  alpha_comunal?: number
 }
 
 export interface CreateSimulationResponse {

@@ -4,6 +4,7 @@ import { useSimulationStore } from '@/store/simulationStore'
 import { RuleEditor } from '@/features/simulation/components/RuleEditor'
 import { ExecutionModal } from '@/features/simulation/components/ExecutionModal'
 import { simulationEndpoints } from '@/services/endpoints/simulation.endpoints'
+import { POBLACION_CENSO_DANE_2019 } from '@/shared/constants/censoDane2019'
 
 const SPEED_OPTIONS = [
   { label: 'Lento', ms: 2000 },
@@ -174,6 +175,10 @@ export const ControlPanel = () => {
       movilidad: 0.25,
       permanencia_base: 0.1,
       sensibilidad_atractivo: 1,
+      poblacion_inicial_por_comuna: POBLACION_CENSO_DANE_2019,
+      peso_capacidad: 0.0,
+      peso_atractores: 0.5,
+      p_exponente_distancia: 2.0,
     })
 
     const state = useSimulationStore.getState()
