@@ -275,12 +275,25 @@ function calculateDistributionMetrics(paso: PasoSimulacionDTO): DistributionMetr
     addRadialInfluence(categoryLayers[category], cell[0], cell[1], getObservationRadius(observation))
   }
 
+  const ATTRACTOR_TO_CATEGORY: Record<string, DistributionCategory> = {
+    comedor_comunitario: 'en_comedor',
+    albergue: 'en_cambuche',
+    olla_consumo: 'zona_consumo',
+    cai_policial: 'zona_repulsora',
+    guardia_seguridad: 'zona_repulsora',
+    rechazo_ciudadano: 'zona_repulsora',
+    zona_violencia: 'zona_repulsora',
+  }
+
   for (const attractor of metricAttractors) {
+    const category = ATTRACTOR_TO_CATEGORY[atractor.tipo]
+    if (!category) continue
+
     const cell = coordinatesToCell(attractor.lat, attractor.lon, rows, cols)
     if (!cell) continue
 
     addRadialInfluence(
-      categoryLayers.zona_repulsora,
+      categoryLayers[category],
       cell[0],
       cell[1],
       attractor.radio_influencia,
@@ -348,10 +361,12 @@ export interface SimulationStoreState {
   showAttractorsLayer: boolean
   showAutomataLayer: boolean
   loadedPasos: PasoSimulacionDTO[]
+  lastSimulationRequest: CreateSimulationRequest | null
 
   createSimulation: (config: CreateSimulationFormData) => Promise<void>
   executeSimulationAsync: (payload: CreateSimulationRequest) => Promise<void>
   startAsyncSimulation: (payload: CreateSimulationRequest) => Promise<void>
+  recalculateSimulation: () => Promise<void>
   setSimulationId: (id: SimulationId) => void
   disconnect: () => void
   startSimulation: () => void
@@ -386,6 +401,7 @@ const INITIAL_STATE = {
   showAttractorsLayer: true,
   showAutomataLayer: true,
   loadedPasos: [],
+  lastSimulationRequest: null,
 }
 
 let currentPasoIndex = 0
@@ -456,6 +472,7 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
         urbanState: null,
         history: [],
         loadedPasos: [],
+        lastSimulationRequest: enrichedPayload,
       })
 
       try {
@@ -538,6 +555,15 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
       } catch (err) {
         set({ error: `Error: ${err instanceof Error ? err.message : 'Desconocido'}`, pollingStatus: null, backendConnected: false, status: 'error' })
       }
+    },
+
+    recalculateSimulation: async () => {
+      const { lastSimulationRequest } = get()
+      if (!lastSimulationRequest) {
+        set({ error: 'No hay parámetros de simulación guardados para recalcular.' })
+        return
+      }
+      await get().startAsyncSimulation(lastSimulationRequest)
     },
 
     setSimulationId: (id: SimulationId) => {

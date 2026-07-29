@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  bucketFor,
-  colorForBucket,
   colorForValueHeatmapP95,
   percentile95,
-  rasterizeDiscrete,
-  DISCRETE_THRESHOLDS,
 } from '@/features/simulation/components/CanvasGridOverlay'
 import { wktCollectionToFeatureCollection, wktToGeoJsonGeometry } from '@/shared/lib/geojson'
 
@@ -51,37 +47,6 @@ describe('colorForValueHeatmapP95', () => {
   it('falls back to alpha 0 if p95 invalid', () => {
     const c = colorForValueHeatmapP95(10, 0)
     expect(c[3]).toBeGreaterThan(0)
-  })
-})
-
-describe('bucketFor', () => {
-  it('classifies empty / low / mid / high', () => {
-    expect(bucketFor(0)).toBe('empty')
-    expect(bucketFor(DISCRETE_THRESHOLDS.mid - 0.01)).toBe('low')
-    expect(bucketFor(DISCRETE_THRESHOLDS.mid)).toBe('mid')
-    expect(bucketFor(DISCRETE_THRESHOLDS.high)).toBe('high')
-    expect(bucketFor(1.5)).toBe('high')
-  })
-
-  it('colorForBucket is alpha 0 for empty', () => {
-    expect(colorForBucket('empty')[3]).toBe(0)
-  })
-})
-
-describe('rasterizeDiscrete', () => {
-  it('produces HxW ImageData with discrete buckets', () => {
-    const m = [
-      [0.0, 0.1, 0.5, 1.0],
-      [0.0, 0.0, 0.36, 0.71],
-    ]
-    const img = rasterizeDiscrete(m)
-    expect(img.width).toBe(4)
-    expect(img.height).toBe(2)
-    // bucket empty → alpha 0
-    expect(img.data[3]).toBe(0)
-    // bucket high → alpha 220
-    const highIndex = (0 * 4 + 3) * 4
-    expect(img.data[highIndex + 3]).toBe(220)
   })
 })
 

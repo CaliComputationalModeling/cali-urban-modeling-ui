@@ -65,6 +65,9 @@ export const SimulationMap = () => {
   const toggleAgentsLayer = useSimulationStore((s) => s.toggleAgentsLayer)
   const toggleAttractorsLayer = useSimulationStore((s) => s.toggleAttractorsLayer)
   const toggleAutomataLayer = useSimulationStore((s) => s.toggleAutomataLayer)
+  const pollingStatus = useSimulationStore((s) => s.pollingStatus)
+  const recalculateSimulation = useSimulationStore((s) => s.recalculateSimulation)
+  const lastSimulationRequest = useSimulationStore((s) => s.lastSimulationRequest)
   const showComunasLayer = useMapsStore((s) => s.showComunasLayer)
   const comunasGeoJson = useMapsStore((s) => s.comunasGeoJson)
   const toggleComunasLayer = useMapsStore((s) => s.toggleComunasLayer)
@@ -75,7 +78,12 @@ export const SimulationMap = () => {
   const [pois, setPois] = useState<PointOfInterest[]>([])
   const [physicalAttractors, setPhysicalAttractors] = useState<AtractorFisicoResponse[]>([])
   const [routes, setRoutes] = useState<RutaMovilidad[]>([])
-
+  const [editAttractorsMode, setEditAttractorsMode] = useState(false)
+  const [attractorsDirty, setAttractorsDirty] = useState(false)
+  const [isRecalculating, setIsRecalculating] = useState(false)
+  const [highlightedAttractorId, setHighlightedAttractorId] = useState<number | null>(null)
+  const [pendingCreate, setPendingCreate] = useState<{ lat: number; lon: number } | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<number | null>(null)
   const [selectedStep, setSelectedStep] = useState<number | null>(null)
   const [isLegendCollapsed, setIsLegendCollapsed] = useState(false)
 
@@ -176,6 +184,68 @@ export const SimulationMap = () => {
     },
     [currentPasoPoblacion],
   )
+
+  const refreshAttractors = useCallback(() => {
+    simulationEndpoints.listPhysicalAttractors().then((res) => {
+      if (res.ok && res.data) setPhysicalAttractors(res.data)
+    }).catch(() => null)
+  }, [])
+
+  const handleAttractorMove = useCallback((id: number, lat: number, lon: number) => {
+    simulationEndpoints.updatePhysicalAttractor(id, { lat, lon }).then((res) => {
+      if (res.ok) {
+        setAttractorsDirty(true)
+        refreshAttractors()
+      }
+    }).catch(() => null)
+  }, [refreshAttractors])
+
+  const handleAttractorCreate = useCallback((lat: number, lon: number) => {
+    setPendingCreate({ lat, lon })
+  }, [])
+
+  const confirmCreateAttractor = useCallback((tipo: string) => {
+    if (!pendingCreate) return
+    const isRepulsor = tipo === 'cai_policial' || tipo === 'guardia_seguridad'
+    simulationEndpoints.createPhysicalAttractor({
+      tipo,
+      lat: pendingCreate.lat,
+      lon: pendingCreate.lon,
+      intensidad: isRepulsor ? -0.7 : 0.7,
+      radio_influencia: 3,
+      version_escenario_id: lastSimulationRequest?.version_escenario_id ?? null,
+    }).then((res) => {
+      if (res.ok) {
+        setAttractorsDirty(true)
+        refreshAttractors()
+      }
+    }).catch(() => null)
+    setPendingCreate(null)
+  }, [pendingCreate, lastSimulationRequest, refreshAttractors])
+
+  const handleAttractorDelete = useCallback((id: number) => {
+    setPendingDelete(id)
+  }, [])
+
+  const confirmDeleteAttractor = useCallback(() => {
+    if (pendingDelete === null) return
+    simulationEndpoints.deletePhysicalAttractor(pendingDelete).then((res) => {
+      if (res.ok) {
+        setAttractorsDirty(true)
+        refreshAttractors()
+      }
+    }).catch(() => null)
+    setPendingDelete(null)
+  }, [pendingDelete, refreshAttractors])
+
+  const handleRecalculate = useCallback(async () => {
+    setIsRecalculating(true)
+    setAttractorsDirty(false)
+    setSelectedStep(null)
+    await recalculateSimulation()
+    setIsRecalculating(false)
+  }, [recalculateSimulation])
+
   return (
     <div
       style={{
@@ -231,11 +301,16 @@ export const SimulationMap = () => {
           dataVersion={timelineValue}
           orientation="mirrorY"
           fixedReference={fixedReference}
+          enableTooltip
         />
 
         <AttractorMarkersLayer
           attractors={physicalAttractors}
           visible={showAttractorsLayer}
+          editMode={editAttractorsMode}
+          onAttractorMove={handleAttractorMove}
+          onAttractorCreate={handleAttractorCreate}
+          onAttractorDelete={handleAttractorDelete}
         />
 
         {routes.map((r, idx) => (
@@ -315,6 +390,14 @@ export const SimulationMap = () => {
         >
           Atractores
         </button>
+        {showAttractorsLayer && (
+          <button
+            className={editAttractorsMode ? 'active' : ''}
+            onClick={() => setEditAttractorsMode((v) => !v)}
+          >
+            {editAttractorsMode ? '✏️ Editando' : '✏️ Editar'}
+          </button>
+        )}
         <button
           className={showComunasLayer ? 'active' : ''}
           onClick={toggleComunasLayer}
@@ -322,6 +405,64 @@ export const SimulationMap = () => {
           📍 Comunas
         </button>
       </div>
+
+      {(attractorsDirty || isRecalculating) && (
+        <div style={{
+          position: 'absolute',
+          top: 60,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 1000,
+          background: isRecalculating ? 'rgba(59, 130, 246, 0.95)' : 'rgba(234, 179, 8, 0.95)',
+          color: isRecalculating ? '#ffffff' : '#1e293b',
+          borderRadius: 8,
+          padding: '8px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          fontSize: 13,
+          fontWeight: 500,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+        }}>
+          {isRecalculating ? (
+            <>
+              <span>{pollingStatus ?? 'Recalculando simulación...'}</span>
+            </>
+          ) : (
+            <>
+              <span>Posición actualizada — recalcula la simulación para ver el efecto</span>
+              <button
+                onClick={handleRecalculate}
+                style={{
+                  background: '#1e293b',
+                  color: '#e2e8f0',
+                  border: 'none',
+                  borderRadius: 4,
+                  padding: '4px 12px',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
+              >
+                Recalcular simulación
+              </button>
+              <button
+                onClick={() => setAttractorsDirty(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: 16,
+                  lineHeight: 1,
+                  padding: 0,
+                }}
+              >
+                ×
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       <div className={`sim-map-legend${isLegendCollapsed ? ' is-collapsed' : ''}`}>
         <div className="sim-map-legend-header">
@@ -402,6 +543,139 @@ export const SimulationMap = () => {
               Live
             </button>
           )}
+        </div>
+      )}
+
+      {pendingCreate && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 2000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'rgba(0,0,0,0.5)',
+        }}>
+          <div style={{
+            background: '#1e293b',
+            borderRadius: 12,
+            padding: '20px 24px',
+            minWidth: 280,
+            color: '#e2e8f0',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+          }}>
+            <h3 style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 600 }}>Nuevo atractor / repulsor</h3>
+            <p style={{ margin: '0 0 16px', fontSize: 12, opacity: 0.7 }}>
+              Lat: {pendingCreate.lat.toFixed(4)}, Lon: {pendingCreate.lon.toFixed(4)}
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {[
+                { tipo: 'fachadas_ciegas', label: 'Fachadas ciegas', emoji: '🧱' },
+                { tipo: 'vias_deterioradas', label: 'Vías deterioradas', emoji: '🚧' },
+                { tipo: 'residuos', label: 'Residuos', emoji: '🗑️' },
+                { tipo: 'deficiencia_iluminacion', label: 'Def. iluminación', emoji: '💡' },
+                { tipo: 'cai_policial', label: 'CAI policial', emoji: '👮' },
+                { tipo: 'guardia_seguridad', label: 'Guardia seguridad', emoji: '🛡️' },
+              ].map((t) => (
+                <button
+                  key={t.tipo}
+                  onClick={() => confirmCreateAttractor(t.tipo)}
+                  style={{
+                    background: '#334155',
+                    border: '1px solid #475569',
+                    borderRadius: 6,
+                    padding: '8px 10px',
+                    cursor: 'pointer',
+                    color: '#e2e8f0',
+                    fontSize: 12,
+                    textAlign: 'left',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <span style={{ fontSize: 16 }}>{t.emoji}</span>
+                  <span>{t.label}</span>
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setPendingCreate(null)}
+              style={{
+                marginTop: 12,
+                width: '100%',
+                background: 'transparent',
+                border: '1px solid #475569',
+                borderRadius: 6,
+                padding: '6px',
+                cursor: 'pointer',
+                color: '#94a3b8',
+                fontSize: 12,
+              }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {pendingDelete !== null && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 2000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'rgba(0,0,0,0.5)',
+        }}>
+          <div style={{
+            background: '#1e293b',
+            borderRadius: 12,
+            padding: '20px 24px',
+            minWidth: 260,
+            color: '#e2e8f0',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+            textAlign: 'center',
+          }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: 15, fontWeight: 600 }}>Eliminar atractor</h3>
+            <p style={{ margin: '0 0 16px', fontSize: 13, opacity: 0.8 }}>
+              Se eliminará el atractor ID {pendingDelete}. Esta acción no se puede deshacer.
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => setPendingDelete(null)}
+                style={{
+                  flex: 1,
+                  background: '#334155',
+                  border: '1px solid #475569',
+                  borderRadius: 6,
+                  padding: '8px',
+                  cursor: 'pointer',
+                  color: '#e2e8f0',
+                  fontSize: 13,
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmDeleteAttractor}
+                style={{
+                  flex: 1,
+                  background: '#ef4444',
+                  border: 'none',
+                  borderRadius: 6,
+                  padding: '8px',
+                  cursor: 'pointer',
+                  color: '#ffffff',
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                Eliminar
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

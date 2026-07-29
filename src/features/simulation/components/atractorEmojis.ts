@@ -8,6 +8,8 @@ export const ATRACTOR_EMOJI_CATALOG: Record<string, string> = {
   vias_deterioradas: '🚧',
   residuos: '🗑️',
   deficiencia_iluminacion: '💡',
+  cai_policial: '👮',
+  guardia_seguridad: '🛡️',
   fachadas_ciegas_urbanas: '🧱',
   via_deteriorada: '🚧',
   via_deterioradas: '🚧',

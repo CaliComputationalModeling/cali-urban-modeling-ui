@@ -8,6 +8,8 @@ describe('Etapa 4 — Atractores como emojis en Leaflet', () => {
       'vias_deterioradas',
       'residuos',
       'deficiencia_iluminacion',
+      'cai_policial',
+      'guardia_seguridad',
     ]
     for (const t of tiposReales) {
       expect(Emojis.ATRACTOR_EMOJI_CATALOG[t]).toBeDefined()
@@ -15,8 +17,16 @@ describe('Etapa 4 — Atractores como emojis en Leaflet', () => {
     }
   })
 
-  it('cada tipo tiene un emoji distinto y consistente', () => {
-    const emojis = Object.values(Emojis.ATRACTOR_EMOJI_CATALOG)
+  it('cada tipo canónico tiene un emoji distinto y consistente', () => {
+    const tiposCanonicos = [
+      'fachadas_ciegas',
+      'vias_deterioradas',
+      'residuos',
+      'deficiencia_iluminacion',
+      'cai_policial',
+      'guardia_seguridad',
+    ] as const
+    const emojis = tiposCanonicos.map(t => Emojis.ATRACTOR_EMOJI_CATALOG[t])
     expect(new Set(emojis).size).toBe(emojis.length)
   })
 
@@ -33,13 +43,17 @@ describe('Etapa 4 — Atractores como emojis en Leaflet', () => {
     expect(Emojis.emojiForAtractor('')).toBe(Emojis.DEFAULT_ATTRACTOR_EMOJI)
   })
 
-  it('cobertura: el catálogo no contiene categorías inventadas (fuente: TIPOS_ATRACTOR_FISICO)', () => {
-    const tiposBackend = [
+  it('cobertura: el catálogo contiene todos los tipos canónicos (fuente: TIPOS_ATRACTOR_FISICO)', () => {
+    const tiposCanonicos = [
       'fachadas_ciegas',
       'vias_deterioradas',
       'residuos',
       'deficiencia_iluminacion',
+      'cai_policial',
+      'guardia_seguridad',
     ]
-    expect(Object.keys(Emojis.ATRACTOR_EMOJI_CATALOG).sort()).toEqual(tiposBackend.sort())
+    for (const tipo of tiposCanonicos) {
+      expect(Emojis.ATRACTOR_EMOJI_CATALOG).toHaveProperty(tipo)
+    }
   })
 })

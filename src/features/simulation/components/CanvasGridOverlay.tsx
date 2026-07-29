@@ -50,6 +50,7 @@ interface DiscreteGridOverlayProps {
   offsetLat?: number
   offsetLon?: number
   fixedReference?: number
+  enableTooltip?: boolean
 }
 
 const ATTRACTOR_EMOJIS: Record<string, string> = {
@@ -57,6 +58,8 @@ const ATTRACTOR_EMOJIS: Record<string, string> = {
   vias_deterioradas: '🚧',
   residuos: '🗑️',
   deficiencia_iluminacion: '💡',
+  cai_policial: '👮',
+  guardia_seguridad: '🛡️',
 }
 
 export function colorForValue(
@@ -126,60 +129,12 @@ export function colorForValueHeatmapP95(
 }
 
 /**
- * Capa discreta del autómata: umbrales fijos (vacío / baja / media / alta)
- * sobre la matriz; no usa normalización relativa.
+ * Umbral mínimo para considerar una celda como "ocupada" en la capa discreta.
  */
 export const DISCRETE_THRESHOLDS = {
   empty: 0,
   low: 0.001,
-  mid: 0.35,
-  high: 0.7,
 } as const
-
-export type DiscreteBucket = 'empty' | 'low' | 'mid' | 'high'
-
-export function bucketFor(rawValue: number): DiscreteBucket {
-  if (rawValue <= DISCRETE_THRESHOLDS.low) return 'empty'
-  if (rawValue < DISCRETE_THRESHOLDS.mid) return 'low'
-  if (rawValue < DISCRETE_THRESHOLDS.high) return 'mid'
-  return 'high'
-}
-
-export function colorForBucket(bucket: DiscreteBucket): [number, number, number, number] {
-  switch (bucket) {
-    case 'empty':
-      return [0, 0, 0, 0]
-    case 'low':
-      return [191, 219, 254, 90]
-    case 'mid':
-      return [251, 191, 36, 170]
-    case 'high':
-      return [220, 38, 38, 220]
-  }
-}
-
-export function rasterizeDiscrete(
-  matrix: number[][],
-  orientation: MatrixOrientation = 'normal',
-): { width: number; height: number; data: Uint8ClampedArray } {
-  const height = matrix.length
-  const width = matrix[0]?.length ?? 0
-  const rgba = new Uint8ClampedArray(width * height * 4)
-
-  for (let row = 0; row < height; row++) {
-    for (let col = 0; col < width; col++) {
-      const index = (row * width + col) * 4
-      const source = getSourceCell(row, col, height, width, orientation)
-      const rawValue = matrix[source.row]?.[source.col] ?? 0
-      const [r, g, b, a] = colorForBucket(bucketFor(rawValue))
-      rgba[index] = r
-      rgba[index + 1] = g
-      rgba[index + 2] = b
-      rgba[index + 3] = a
-    }
-  }
-  return { width, height, data: rgba }
-}
 
 function getSourceCell(
   displayRow: number,
@@ -481,6 +436,7 @@ export const DiscreteGridOverlay = ({
   offsetLat = 0,
   offsetLon = 0,
   fixedReference,
+  enableTooltip = false,
   cellGeometries,
 }: DiscreteGridOverlayProps & { cellGeometries?: string[] }) => {
   const map = useMap()
@@ -638,6 +594,52 @@ export const DiscreteGridOverlay = ({
       ctx.restore()
     })
   }, [bounds, cellGeometries, data, dataVersion, fixedReference, map, offsetLat, offsetLon, orientation, visible])
+
+  useEffect(() => {
+    if (!visible || !enableTooltip) return
+
+    const tooltip = L.tooltip({
+      permanent: false,
+      direction: 'top',
+      className: 'probability-popup',
+      offset: [0, -10],
+    })
+
+    const handleMouseMove = (e: L.LeafletMouseEvent) => {
+      if (!data || data.length === 0 || (data[0]?.length ?? 0) === 0) return
+      const shiftedBounds = applyBoundsOffset(bounds, offsetLat, offsetLon)
+      const { lat, lng } = e.latlng
+      if (lat > shiftedBounds.north || lat < shiftedBounds.south || lng < shiftedBounds.west || lng > shiftedBounds.east) {
+        tooltip.remove()
+        return
+      }
+
+      const rows = data.length
+      const cols = data[0]?.length ?? 0
+      const row = Math.min(rows - 1, Math.floor(((shiftedBounds.north - lat) / (shiftedBounds.north - shiftedBounds.south)) * rows))
+      const col = Math.min(cols - 1, Math.floor(((lng - shiftedBounds.west) / (shiftedBounds.east - shiftedBounds.west)) * cols))
+      const source = getSourceCell(row, col, rows, cols, orientation)
+      const value = data[source.row]?.[source.col] ?? 0
+      if (value <= 0) {
+        tooltip.remove()
+        return
+      }
+
+      const p95 = fixedReference && fixedReference > 0 ? fixedReference : percentile95(data)
+      const safeP95 = p95 > 0 ? p95 : 1
+      const ratio = Math.min(value / safeP95, 1)
+      const probability = Math.round(ratio * 100)
+      tooltip.setLatLng(e.latlng)
+      tooltip.setContent(`Probabilidad de avistamiento: ${getProbabilityLabel(ratio)} (${probability}%)`)
+      tooltip.addTo(map)
+    }
+
+    map.on('mousemove', handleMouseMove)
+    return () => {
+      map.off('mousemove', handleMouseMove)
+      tooltip.remove()
+    }
+  }, [bounds, data, enableTooltip, fixedReference, map, offsetLat, offsetLon, orientation, visible])
 
   return null
 }

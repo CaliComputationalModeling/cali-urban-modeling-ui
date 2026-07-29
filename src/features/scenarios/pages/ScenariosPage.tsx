@@ -45,6 +45,8 @@ const RULE_WEIGHT_OPTIONS: ParameterOption[] = [
   { key: 'vias_deterioradas', label: 'Vías deterioradas', emoji: '🚧', effect: 'attractor', signo: 1, min: 0, max: 1, step: 0.05, defaultValue: 0.1 },
   { key: 'residuos', label: 'Residuos', emoji: '🗑️', effect: 'attractor', signo: 1, min: 0, max: 1, step: 0.05, defaultValue: 0.1 },
   { key: 'deficiencia_iluminacion', label: 'Deficiencia de iluminación', emoji: '💡', effect: 'attractor', signo: 1, min: 0, max: 1, step: 0.05, defaultValue: 0.1 },
+  { key: 'cai_policial', label: 'CAI policial', emoji: '👮', effect: 'repulsor', signo: -1, min: 0, max: 1, step: 0.05, defaultValue: 0.0 },
+  { key: 'guardia_seguridad', label: 'Guardia de seguridad', emoji: '🛡️', effect: 'repulsor', signo: -1, min: 0, max: 1, step: 0.05, defaultValue: 0.0 },
 ]
 
 const RULE_WEIGHT_TOTAL = 1

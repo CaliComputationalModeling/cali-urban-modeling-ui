@@ -6,6 +6,18 @@ const GRID_SIZE = 20
 const POI_ROW = 8
 const POI_COL = 11
 
+type SimulationCreatePayload = {
+  generaciones?: number
+  tasa_inyeccion?: number
+}
+
+type SimulationStep = {
+  tiempo: number
+  densidad: number[][]
+  atractivo: number[][]
+  total_poblacion: number
+}
+
 function makeMatrix(step: number, kind: 'density' | 'attraction') {
   return Array.from({ length: GRID_SIZE }, (_, row) =>
     Array.from({ length: GRID_SIZE }, (_, col) => {
@@ -18,7 +30,7 @@ function makeMatrix(step: number, kind: 'density' | 'attraction') {
   )
 }
 
-function makeSteps() {
+function makeSteps(): SimulationStep[] {
   return Array.from({ length: 51 }, (_, step) => ({
     tiempo: step,
     densidad: makeMatrix(step, 'density'),
@@ -29,9 +41,9 @@ function makeSteps() {
 
 test('conserves mass and renders stronger heatmap around injected POI', async ({ page }) => {
   const steps = makeSteps()
-  let createPayload: Record<string, unknown> | null = null
+  let createPayload: SimulationCreatePayload | undefined
   let statusCalls = 0
-  let pasosResponse: typeof steps | null = null
+  let pasosResponse: SimulationStep[] | null = null
 
   await page.route(`${API_BASE}/auth/me`, async (route) => {
     await route.fulfill({
@@ -56,7 +68,11 @@ test('conserves mass and renders stronger heatmap around injected POI', async ({
   })
 
   await page.route(`${API_BASE}/api/simulaciones/ejecutar`, async (route) => {
-    createPayload = route.request().postDataJSON()
+    const payload = route.request().postDataJSON() as Record<string, unknown> | null
+    createPayload = {
+      generaciones: typeof payload?.generaciones === 'number' ? payload.generaciones : undefined,
+      tasa_inyeccion: typeof payload?.tasa_inyeccion === 'number' ? payload.tasa_inyeccion : undefined,
+    }
     await route.fulfill({
       status: 202,
       contentType: 'application/json',
@@ -86,11 +102,17 @@ test('conserves mass and renders stronger heatmap around injected POI', async ({
   await page.goto('/simulation')
 
   await page.getByRole('button', { name: /iniciar/i }).click()
-  await expect.poll(() => createPayload?.generaciones).toBe(100)
-  expect(createPayload?.tasa_inyeccion ?? 0).toBe(0)
+  const payloadGeneraciones = createPayload?.generaciones
+  const payloadTasaInyeccion = createPayload?.tasa_inyeccion ?? 0
+  await expect.poll(() => payloadGeneraciones).toBe(100)
+  expect(payloadTasaInyeccion).toBe(0)
 
   await expect.poll(() => pasosResponse?.length ?? 0).toBe(51)
-  expect(Math.abs((pasosResponse?.[0].total_poblacion ?? 0) - (pasosResponse?.[50].total_poblacion ?? -1))).toBeLessThan(0.1)
+  const firstStep = pasosResponse?.[0] as SimulationStep | undefined
+  const lastStep = pasosResponse?.[50] as SimulationStep | undefined
+  expect(firstStep).toBeDefined()
+  expect(lastStep).toBeDefined()
+  expect(Math.abs((firstStep?.total_poblacion ?? 0) - (lastStep?.total_poblacion ?? -1))).toBeLessThan(0.1)
 
   await page.getByRole('button', { name: /iniciar/i }).click()
   await expect(page.getByTestId('stats-total-population')).toContainText('10,000')
@@ -100,8 +122,8 @@ test('conserves mass and renders stronger heatmap around injected POI', async ({
     await expect(page.getByTestId('stats-total-population')).toContainText('10,000')
   }
 
-  const finalStep = pasosResponse?.[50]
-  expect(finalStep).toBeTruthy()
+  const finalStep = pasosResponse?.[50] as SimulationStep | undefined
+  expect(finalStep).toBeDefined()
   const nearPoi = finalStep!.densidad[POI_ROW][POI_COL]
   const farFromPoi = finalStep!.densidad[0][0]
   const mooreNeighbour = finalStep!.densidad[POI_ROW + 1][POI_COL + 1]

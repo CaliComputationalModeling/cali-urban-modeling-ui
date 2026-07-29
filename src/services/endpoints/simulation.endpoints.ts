@@ -36,6 +36,28 @@ export interface AtractorFisicoResponse {
   descripcion?: string
   activo: boolean
   fecha_creacion?: string
+  version_escenario_id?: number | null
+}
+
+export interface CreateAtractorFisicoRequest {
+  tipo: string
+  lat: number
+  lon: number
+  intensidad: number
+  radio_influencia?: number
+  descripcion?: string
+  version_escenario_id?: number | null
+}
+
+export interface UpdateAtractorFisicoRequest {
+  tipo?: string
+  lat?: number
+  lon?: number
+  intensidad?: number
+  radio_influencia?: number
+  descripcion?: string
+  activo?: boolean
+  version_escenario_id?: number | null
 }
 
 export interface UpdatePesosRequest {
@@ -159,6 +181,15 @@ export const simulationEndpoints = {
 
   listPhysicalAttractors: () =>
     http.get<AtractorFisicoResponse[]>('/api/atractores-fisicos'),
+
+  createPhysicalAttractor: (data: CreateAtractorFisicoRequest) =>
+    http.post<AtractorFisicoResponse>('/api/atractores-fisicos', data),
+
+  updatePhysicalAttractor: (id: number, data: UpdateAtractorFisicoRequest) =>
+    http.put<AtractorFisicoResponse>(`/api/atractores-fisicos/${id}`, data),
+
+  deletePhysicalAttractor: (id: number) =>
+    http.delete(`/api/atractores-fisicos/${id}`),
 
   // 2. Actualizar pesos de una regla
   updateRuleWeights: (ruleId: number, data: UpdatePesosRequest) =>
