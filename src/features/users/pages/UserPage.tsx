@@ -18,10 +18,12 @@ import { CreateUserSheet } from './CreateUserSidesheet'
 
 const ROLE_LABELS: Record<number, string> = {
   1: 'Administrador',
-  2: 'Coordinador Técnico',
-  3: 'Equipo Técnico',
-  4: 'Jefe de Fundación',
-  5: 'Trabajador de Campo',
+  2: 'Analista Técnico',
+  3: 'Trabajador de Campo',
+  4: 'Coordinador Técnico',
+  5: 'Equipo Técnico',
+  6: 'Jefe de Fundación',
+  7: 'Auxiliar Técnico',
 }
 
 function getInitials(name: string): string {

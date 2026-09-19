@@ -3,6 +3,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE ?? ''
 interface RequestConfig extends RequestInit {
   params?: Record<string, string>
   responseType?: 'auto' | 'json' | 'blob' | 'arrayBuffer' | 'text'
+  timeout?: number
 }
 
 interface HttpResponse<T> {
@@ -45,16 +46,21 @@ class HttpClient {
     endpoint: string,
     config: RequestConfig = {}
   ): Promise<HttpResponse<T>> {
-    const { params, responseType = 'auto', ...init } = config
+    const { params, responseType = 'auto', timeout, ...init } = config
     const url = this.buildUrl(endpoint, params)
     const headers = this.buildHeaders(init.headers)
+
+    const controller = new AbortController()
+    const timeoutId = timeout ? setTimeout(() => controller.abort(), timeout) : null
 
     try {
       const response = await fetch(url, {
         ...init,
         headers,
         credentials: 'include',
+        signal: controller.signal,
       })
+      if (timeoutId) clearTimeout(timeoutId)
 
       if (response.status === 401) {
         this.unauthorizedHandler?.()
@@ -78,11 +84,17 @@ class HttpClient {
 
       return { data, status: response.status, ok: response.ok, headers: response.headers }
     } catch (error) {
+      if (timeoutId) clearTimeout(timeoutId)
       console.error('[HTTP_CLIENT_ERROR]:', error)
 
+      const isAbort = error instanceof Error && error.name === 'AbortError'
       return {
-        data: { detail: 'Error de red o conexión rechazada' } as unknown as T,
-        status: 500,
+        data: {
+          detail: isAbort
+            ? 'La solicitud excedió el tiempo de espera. Si ejecutaste una simulación grande, intenta con menos generaciones o espera a que el servidor termine.'
+            : 'Error de red o conexión rechazada',
+        } as unknown as T,
+        status: isAbort ? 504 : 500,
         ok: false,
         headers: new Headers(),
       }

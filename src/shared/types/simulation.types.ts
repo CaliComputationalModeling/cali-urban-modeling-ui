@@ -71,6 +71,13 @@ export interface SimulationResults {
   accuracy: number
 }
 
+export interface SimulationConfig {
+  width: number
+  height: number
+  cellSize?: string
+  [key: string]: unknown
+}
+
 // Para logging
 export interface SimulationLog {
   timestamp: string

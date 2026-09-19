@@ -13,9 +13,10 @@ import {
   createSimulationId,
   SPEED_OPTIONS,
   type CreateSimulationRequest,
+  type UnidadTemporal,
 } from '@/shared/contracts/simulation.contract'
 import type { Observation } from '@/shared/types/observation.types'
-import type { CreateSimulationFormData } from '@/shared/types/simulation.types'
+import type { CreateSimulationFormData, Simulation, SimulationLog } from '@/shared/types/simulation.types'
 import type {
   AtractorFisicoResponse,
   EjecucionSimulacionResponse,
@@ -286,7 +287,7 @@ function calculateDistributionMetrics(paso: PasoSimulacionDTO): DistributionMetr
   }
 
   for (const attractor of metricAttractors) {
-    const category = ATTRACTOR_TO_CATEGORY[atractor.tipo]
+    const category = ATTRACTOR_TO_CATEGORY[attractor.tipo]
     if (!category) continue
 
     const cell = coordinatesToCell(attractor.lat, attractor.lon, rows, cols)
@@ -362,6 +363,17 @@ export interface SimulationStoreState {
   showAutomataLayer: boolean
   loadedPasos: PasoSimulacionDTO[]
   lastSimulationRequest: CreateSimulationRequest | null
+  activeVersionId: number | null
+  dias_por_generacion: number
+  unidad_temporal: UnidadTemporal
+  fecha_inicio_simulacion: Date
+
+  // Legacy compatibility fields (used by older components/hooks)
+  currentSimulation: Simulation | null
+  simulations: Simulation[]
+  isLoading: boolean
+  isRunning: boolean
+  logs: SimulationLog[]
 
   createSimulation: (config: CreateSimulationFormData) => Promise<void>
   executeSimulationAsync: (payload: CreateSimulationRequest) => Promise<void>
@@ -379,6 +391,21 @@ export interface SimulationStoreState {
   toggleAgentsLayer: () => void
   toggleAttractorsLayer: () => void
   toggleAutomataLayer: () => void
+  setActiveVersionId: (id: number) => void
+  setTemporalConfig: (dias_por_generacion: number, unidad_temporal: UnidadTemporal) => void
+  getSimulatedDateLabel: (generacion?: number) => string
+  runSimulationForVersion: (versionId: number, payload: CreateSimulationRequest) => Promise<void>
+
+  // Legacy compatibility methods
+  addLog: (message: string, level: SimulationLog['level']) => void
+  loadSimulation: (id: string) => Promise<void>
+  loadSimulations: (limit?: number, offset?: number) => Promise<void>
+  runSimulation: (generations: number) => Promise<void>
+  deleteSimulation: (id: string) => Promise<void>
+  fetchCells: () => Promise<void>
+  clearLogs: () => void
+  clearError: () => void
+  updateProgress: (progress: number, total?: number) => void
 }
 
 const INITIAL_STATE = {
@@ -402,6 +429,17 @@ const INITIAL_STATE = {
   showAutomataLayer: true,
   loadedPasos: [],
   lastSimulationRequest: null,
+  activeVersionId: null,
+  dias_por_generacion: 1,
+  unidad_temporal: 'dias' as UnidadTemporal,
+  fecha_inicio_simulacion: new Date(),
+
+  // Legacy compatibility defaults
+  currentSimulation: null,
+  simulations: [],
+  isLoading: false,
+  isRunning: false,
+  logs: [],
 }
 
 let currentPasoIndex = 0
@@ -467,6 +505,8 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
         ejecucionId: null,
         simulationId: null,
         status: 'idle',
+        isLoading: true,
+        isRunning: false,
         currentGeneration: 0,
         geojson: null,
         urbanState: null,
@@ -479,8 +519,8 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
         const res = await simulationEndpoints.createSimulation(enrichedPayload)
 
         if (!res.ok) {
-          if (res.status === 403) { set({ error: 'Sin permisos', pollingStatus: null, backendConnected: true }); return }
-          if (res.status === 422 || res.status === 400) { set({ error: formatBackendDetail(res.data, 'Error de validaci\u00f3n'), pollingStatus: null, backendConnected: true }); return }
+          if (res.status === 403) { set({ error: 'Sin permisos', pollingStatus: null, backendConnected: true, isLoading: false, isRunning: false }); return }
+          if (res.status === 422 || res.status === 400) { set({ error: formatBackendDetail(res.data, 'Error de validaci\u00f3n'), pollingStatus: null, backendConnected: true, isLoading: false, isRunning: false }); return }
           throw new Error(formatBackendDetail(res.data, 'Error al iniciar simulaci\u00f3n'))
         }
         if (!res.data) throw new Error('Respuesta vac\u00eda del servidor')
@@ -500,6 +540,7 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
             },
             retryCount: 0,
             backendConnected: true,
+            isLoading: false,
           })
 
           pollingTimer = setInterval(() => {
@@ -519,7 +560,7 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
 
               if (isFailedStatus(progress.estado)) {
                 clearPolling()
-                set({ status: 'error', error: progress.mensaje ?? 'La simulaci\u00f3n fall\u00f3', pollingStatus: null })
+                set({ status: 'error', isLoading: false, isRunning: false, error: progress.mensaje ?? 'La simulaci\u00f3n fall\u00f3', pollingStatus: null })
                 return
               }
 
@@ -527,7 +568,7 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
                 clearPolling()
                 set({ pollingStatus: 'Cargando pasos de simulaci\u00f3n...' })
                 await loadPasosIntoStore(executionId, set)
-                set({ pollingStatus: null, simulationProgress: { ...progress, progreso: 100 }, status: 'idle' })
+                set({ pollingStatus: null, simulationProgress: { ...progress, progreso: 100 }, status: 'idle', isLoading: false, isRunning: false })
               }
             })()
           }, 1000)
@@ -536,12 +577,27 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
         }
 
         const ejecucion = res.data as EjecucionSimulacionResponse
+        if (isFailedStatus(ejecucion.estado) || ejecucion.pasos.length === 0) {
+          set({
+            error: ejecucion.estado === 'fallido'
+              ? 'La simulaci\u00f3n termin\u00f3 con estado fallido.'
+              : 'La respuesta del servidor no contiene pasos para reproducir.',
+            pollingStatus: null,
+            backendConnected: true,
+            status: 'error',
+            isLoading: false,
+            isRunning: false,
+          })
+          return
+        }
         set({
           simulationId: createSimulationId(String(ejecucion.id)),
           ejecucionId: String(ejecucion.id),
           loadedPasos: ejecucion.pasos,
           maxGenerations: ejecucion.pasos.length,
           status: 'idle',
+          isLoading: false,
+          isRunning: false,
           currentGeneration: 0,
           geojson: null,
           urbanState: null,
@@ -553,7 +609,7 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
           simulationProgress: null,
         })
       } catch (err) {
-        set({ error: `Error: ${err instanceof Error ? err.message : 'Desconocido'}`, pollingStatus: null, backendConnected: false, status: 'error' })
+        set({ error: `Error: ${err instanceof Error ? err.message : 'Desconocido'}`, pollingStatus: null, backendConnected: false, status: 'error', isLoading: false, isRunning: false })
       }
     },
 
@@ -571,7 +627,17 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
       resetMetricSources()
       currentPasoIndex = 0
       set({ simulationId: id, ejecucionId: String(id), status: 'idle', currentGeneration: 0, geojson: null, urbanState: null, history: [], loadedPasos: [], error: null, retryCount: 0, backendConnected: true, pollingStatus: 'Cargando pasos de simulaci\u00f3n...', simulationProgress: null })
-      loadPasosIntoStore(String(id), set).catch(() => null)
+      loadPasosIntoStore(String(id), set)
+        .then(() => {
+          const { loadedPasos } = get()
+          if (loadedPasos.length === 0) {
+            set({
+              error: 'La ejecuci\u00f3n no tiene pasos disponibles (pudo fallar o quedar truncada).',
+              status: 'error',
+            })
+          }
+        })
+        .catch(() => set({ error: 'No se pudieron cargar los pasos de la ejecuci\u00f3n.', status: 'error' }))
         .finally(() => set({ pollingStatus: null }))
     },
 
@@ -587,7 +653,7 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
       const { simulationId, status, loadedPasos } = get()
       if (!simulationId || status === 'running') return
       if (loadedPasos.length === 0) { set({ error: 'No hay pasos cargados. Ejecuta una simulaci\u00f3n primero.' }); return }
-      set({ status: 'running', error: null, retryCount: 0, backendConnected: true })
+      set({ status: 'running', isRunning: true, error: null, retryCount: 0, backendConnected: true })
       void get().stepSimulation().then(() => {
         if (get().status === 'running') scheduleTick()
       })
@@ -595,7 +661,7 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
 
     pauseSimulation: () => {
       clearTick()
-      if (get().status === 'running') set({ status: 'paused' })
+      if (get().status === 'running') set({ status: 'paused', isRunning: false })
     },
 
     stepSimulation: async () => {
@@ -630,6 +696,7 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
         currentGeneration: paso.tiempo,
         history: [...state.history, newPoint].slice(-50),
         status: isLast ? 'completed' : state.status,
+        isRunning: isLast ? false : state.status === 'running',
         retryCount: 0,
         backendConnected: true,
         error: null,
@@ -641,7 +708,7 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
     resetSimulation: async () => {
       clearTick()
       currentPasoIndex = 0
-      set({ status: 'idle', currentGeneration: 0, geojson: null, urbanState: null, history: [], error: null, retryCount: 0, simulationProgress: null })
+      set({ status: 'idle', isRunning: false, currentGeneration: 0, geojson: null, urbanState: null, history: [], error: null, retryCount: 0, simulationProgress: null })
     },
 
     setSpeed: (ms: number) => {
@@ -681,6 +748,108 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => {
           showAgentsLayer: next ? false : state.showAgentsLayer,
         }
       })
+    },
+
+    setActiveVersionId: (id: number) => {
+      set({ activeVersionId: id })
+    },
+
+    setTemporalConfig: (dias_por_generacion: number, unidad_temporal: UnidadTemporal) => {
+      set({ dias_por_generacion: Math.max(1, dias_por_generacion), unidad_temporal })
+    },
+
+    getSimulatedDateLabel: (generacion?: number) => {
+      const state = get()
+      const gen = generacion ?? state.currentGeneration
+      const cantidad = gen * state.dias_por_generacion
+      const unidad = state.unidad_temporal
+
+      if (unidad === 'semanas') {
+        return `Semana ${cantidad}`
+      }
+      if (unidad === 'meses') {
+        return `Mes ${cantidad}`
+      }
+      return `Día ${cantidad}`
+    },
+
+    // Legacy compatibility no-op/minimal methods
+    addLog: (message: string, level: SimulationLog['level']) => {
+      const log: SimulationLog = {
+        timestamp: new Date().toISOString(),
+        level,
+        message,
+      }
+      set((state) => ({ logs: [...state.logs, log].slice(-100) }))
+    },
+
+    loadSimulation: async (id: string) => {
+      set({ isLoading: true })
+      try {
+        await get().setSimulationId(id as SimulationId)
+      } finally {
+        set({ isLoading: false })
+      }
+    },
+
+    loadSimulations: async () => {
+      set({ isLoading: true })
+      set({ isLoading: false })
+    },
+
+    runSimulation: async (generations: number) => {
+      set({ isLoading: true, isRunning: true })
+      try {
+        set({ maxGenerations: generations })
+        await get().startSimulation()
+      } finally {
+        set({ isLoading: false })
+      }
+    },
+
+    deleteSimulation: async () => {
+      set({ simulationId: null, ejecucionId: null, currentSimulation: null })
+    },
+
+    fetchCells: async () => {
+      // Legacy method: cells are loaded as pasos through setSimulationId.
+    },
+
+    clearLogs: () => {
+      set({ logs: [] })
+    },
+
+    clearError: () => {
+      set({ error: null })
+    },
+
+    updateProgress: (progress: number, total?: number) => {
+      set((state) => ({
+        simulationProgress: state.simulationProgress
+          ? {
+              ...state.simulationProgress,
+              progreso: total ? Math.round((progress / total) * 100) : progress,
+            }
+          : null,
+      }))
+    },
+
+    runSimulationForVersion: async (versionId: number, payload: CreateSimulationRequest) => {
+      // Cargar la versión para obtener configuración temporal y de capacidad.
+      const versionRes = await simulationEndpoints.getScenarioVersion(versionId)
+      if (versionRes.ok && versionRes.data) {
+        const cfg = versionRes.data.configuracion_malla
+        const dias_por_generacion = cfg?.dias_por_generacion ?? 1
+        const unidad_temporal = (cfg?.unidad_temporal as UnidadTemporal) ?? 'dias'
+        set({
+          activeVersionId: versionId,
+          dias_por_generacion: Math.max(1, Number(dias_por_generacion) || 1),
+          unidad_temporal: ['dias', 'semanas', 'meses'].includes(unidad_temporal)
+            ? unidad_temporal
+            : 'dias',
+        })
+      }
+      await get().executeSimulationAsync(payload)
     },
   }
 })

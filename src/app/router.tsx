@@ -89,7 +89,7 @@ export const AppRouter = () => {
           path="/simulation"
           element={
             <DashboardLayout>
-              <PermissionGate allowedRoles={[UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FOUNDATION_HEAD]}>
+              <PermissionGate allowedRoles={[UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FOUNDATION_HEAD, UserRole.FIELD_WORKER]}>
                 <SimulationPage />
               </PermissionGate>
             </DashboardLayout>

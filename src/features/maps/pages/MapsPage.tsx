@@ -3,9 +3,11 @@ import { MapContainer, TileLayer, CircleMarker, Polyline, Tooltip as LeafletTool
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { toast } from 'sonner'
+import { Play, Pause } from 'lucide-react'
 import { useMapsStore } from '@/store/mapsStore'
 import { useSimulationStore } from '@/store/simulationStore'
 import http from '@/services/http'
+import { simulationEndpoints } from '@/services/endpoints'
 import type { PointOfInterest, GeoJsonFeature } from '@/shared/contracts/simulation.contract'
 import { filterLatLonInsideGeoJson } from '@/shared/lib/geojson'
 import type { Feature, GeoJsonProperties, Geometry } from 'geojson'
@@ -70,15 +72,83 @@ export const MapsPage = () => {
   const simulationGeojson = useSimulationStore((s) => s.geojson)
   const simulationGeneration = useSimulationStore((s) => s.currentGeneration)
   const simulationStatus = useSimulationStore((s) => s.status)
+  const loadedPasos = useSimulationStore((s) => s.loadedPasos)
 
   const [legendMin, setLegendMin] = useState(0)
   const [legendMax, setLegendMax] = useState(100)
   const [pois, setPois] = useState<PointOfInterest[]>([])
   const [showSimulationCells, setShowSimulationCells] = useState(false)
 
+  // Estado para simulación en vivo en Cartografía
+  const [versions, setVersions] = useState<Array<{ id: number; escenario_id: number; nombre?: string }>>([])
+  const [selectedVersionId, setSelectedVersionId] = useState<number | ''>('')
+  const [isInitializing, setIsInitializing] = useState(false)
+
+  const runSimulationForVersion = useSimulationStore((s) => s.runSimulationForVersion)
+  const startSimulation = useSimulationStore((s) => s.startSimulation)
+  const pauseSimulation = useSimulationStore((s) => s.pauseSimulation)
+  const setTemporalConfig = useSimulationStore((s) => s.setTemporalConfig)
+  const getSimulatedDateLabel = useSimulationStore((s) => s.getSimulatedDateLabel)
+
   useEffect(() => {
     fetchHeatmap().catch(() => null)
   }, [fetchHeatmap])
+
+  useEffect(() => {
+    // Cargar versiones disponibles para seleccionar escenario activo.
+    simulationEndpoints.listScenarioVersions().then((res) => {
+      if (res.ok && Array.isArray(res.data)) {
+        setVersions(res.data.map((v) => ({ id: v.id, escenario_id: v.escenario_id })))
+        if (res.data.length > 0 && selectedVersionId === '') {
+          setSelectedVersionId(res.data[0].id)
+        }
+      }
+    })
+  }, [selectedVersionId])
+
+  // Auto-reproducción continua: cuando la simulación termina de cargar pasos,
+  // iniciar reproducción automáticamente (si el usuario no pausó).
+  useEffect(() => {
+    if (simulationStatus === 'idle' && simulationGeojson && simulationGeneration === 0 && showSimulationCells) {
+      startSimulation()
+    }
+  }, [simulationStatus, simulationGeojson, simulationGeneration, startSimulation, showSimulationCells])
+
+  const handleInitializeSimulation = async () => {
+    if (!selectedVersionId) {
+      toast.error('Selecciona una versión de escenario para inicializar la simulación')
+      return
+    }
+
+    setIsInitializing(true)
+    try {
+      // Sincronizar configuración temporal desde la versión seleccionada.
+      const versionRes = await simulationEndpoints.getScenarioVersion(Number(selectedVersionId))
+      if (versionRes.ok && versionRes.data?.configuracion_malla) {
+        const cfg = versionRes.data.configuracion_malla
+        setTemporalConfig(
+          Number(cfg.dias_por_generacion ?? 1),
+          (cfg.unidad_temporal as 'dias' | 'semanas' | 'meses') ?? 'dias',
+        )
+      }
+
+      await runSimulationForVersion(Number(selectedVersionId), {
+        version_escenario_id: Number(selectedVersionId),
+        generaciones: 30,
+        radio_suavizado: 1,
+        movilidad: 0.25,
+        permanencia_base: 0.1,
+        sensibilidad_atractivo: 1.0,
+        alpha_comunal: 1.0,
+      })
+      setShowSimulationCells(true)
+      toast.success('Simulación inicializada. Reproducción automática en curso.')
+    } catch (err) {
+      toast.error('No fue posible inicializar la simulación')
+    } finally {
+      setIsInitializing(false)
+    }
+  }
 
   useEffect(() => {
     fetchComunasGeoJson().catch(() => null)
@@ -246,9 +316,6 @@ export const MapsPage = () => {
                 outline: 'none',
               }}
             />
-            <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
-              Fuente: `/api/mapas/rutas/{'{ejecucion_id}'}`
-            </p>
           </div>
           <button
             onClick={() => fetchPredictedRoutes().catch(() => null)}
@@ -266,6 +333,84 @@ export const MapsPage = () => {
             disabled={isLoadingRoutes}
           >
             {isLoadingRoutes ? 'Cargando…' : 'Cargar rutas'}
+          </button>
+        </div>
+
+        {/* Simulación en vivo — reutiliza el motor AC validado */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(180px, 1fr) auto auto',
+            gap: 12,
+            alignItems: 'end',
+            borderTop: '1px solid var(--color-border)',
+            paddingTop: 12,
+          }}
+        >
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--color-text-dark)' }}>
+              Autómata celular en vivo — escenario
+            </label>
+            <select
+              value={selectedVersionId}
+              onChange={(e) => setSelectedVersionId(Number(e.target.value) || '')}
+              style={{
+                width: '100%',
+                marginTop: 6,
+                padding: '10px 12px',
+                borderRadius: 12,
+                border: '1px solid var(--color-border)',
+                background: 'var(--color-input-bg)',
+                outline: 'none',
+              }}
+            >
+              <option value="">Selecciona versión</option>
+              {versions.map((v) => (
+                <option key={v.id} value={v.id}>
+                  Versión #{v.id} (escenario #{v.escenario_id})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <button
+            onClick={handleInitializeSimulation}
+            className="btn"
+            disabled={isInitializing || !selectedVersionId}
+            style={{
+              padding: '10px 14px',
+              borderRadius: 12,
+              border: '1px solid var(--color-border)',
+              background: 'var(--color-primary)',
+              color: 'white',
+              fontWeight: 700,
+              height: 42,
+              opacity: isInitializing || !selectedVersionId ? 0.7 : 1,
+            }}
+          >
+            {isInitializing ? 'Inicializando…' : '▶ Inicializar simulación'}
+          </button>
+
+          <button
+            onClick={() => (simulationStatus === 'running' ? pauseSimulation() : startSimulation())}
+            className="btn"
+            disabled={!simulationGeojson}
+            style={{
+              padding: '10px 14px',
+              borderRadius: 12,
+              border: '1px solid var(--color-border)',
+              background: simulationStatus === 'running' ? '#f59e0b' : 'var(--color-dark)',
+              color: 'white',
+              fontWeight: 700,
+              height: 42,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              opacity: !simulationGeojson ? 0.5 : 1,
+            }}
+          >
+            {simulationStatus === 'running' ? <Pause size={16} /> : <Play size={16} />}
+            {simulationStatus === 'running' ? 'Pausar' : simulationStatus === 'paused' ? 'Continuar' : 'Reproducir'}
           </button>
         </div>
       </section>
@@ -288,7 +433,12 @@ export const MapsPage = () => {
             style={{ height: '100%', width: '100%', backgroundColor: '#0d1017' }}
             bounds={bounds ?? undefined}
           >
-            <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" attribution="&copy; CARTO" />
+            <TileLayer
+            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=cb1_3qaq_1_82af32a9aa3979a74a530f3d"
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+            subdomains={['a', 'b', 'c', 'd']}
+             maxZoom={20}
+            />
 
             {showComunasLayer && comunasGeoJson && (
               <GeoJSON
@@ -427,6 +577,7 @@ export const MapsPage = () => {
                       <span>Densidad: {`${Math.round(d * 100)}%`}</span>
                       <span>Agentes: {f.properties.agentes}</span>
                       <span>Generación: {simulationGeneration}</span>
+                      <span>{getSimulatedDateLabel()}</span>
                     </div>
                   </LeafletTooltip>
                 </CircleMarker>
@@ -524,10 +675,16 @@ export const MapsPage = () => {
               </span>
             </div>
           )}
-          <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
-            Celdas (KDE): {filteredHeatmap.length} · Simulación:{' '}
+          <div style={{ fontSize: 12, color: 'var(--color-text-muted)', textAlign: 'right' }}>
+            <div>Celdas (KDE): {filteredHeatmap.length} · Simulación:{' '}
             {simulationGeojson?.features?.length ?? 0} · Rutas: {(predicted?.rutas ?? []).length} · Confluencias:{' '}
-            {(predicted?.confluencias ?? []).length} · Atractores: {pois.length}
+            {(predicted?.confluencias ?? []).length} · Atractores: {pois.length}</div>
+            {(simulationStatus !== 'idle' || simulationGeojson) && (
+              <div style={{ marginTop: 4, fontWeight: 700, color: 'var(--color-text-dark)' }}>
+                {getSimulatedDateLabel()} · Población simulada:{' '}
+                {simulationGeojson?.metadata?.total_agentes?.toLocaleString('es-CO') ?? '—'} · Generación: {simulationGeneration}
+              </div>
+            )}
           </div>
         </div>
       </section>

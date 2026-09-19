@@ -60,6 +60,13 @@ const ATTRACTOR_EMOJIS: Record<string, string> = {
   deficiencia_iluminacion: '💡',
   cai_policial: '👮',
   guardia_seguridad: '🛡️',
+  comedor_comunitario: '🍽️',
+  albergue: '🏠',
+  zona_reciclaje: '♻️',
+  zona_retaque: '💰',
+  olla_consumo: '⚠️',
+  rechazo_ciudadano: '🚫',
+  zona_violencia: '🔥',
 }
 
 export function colorForValue(

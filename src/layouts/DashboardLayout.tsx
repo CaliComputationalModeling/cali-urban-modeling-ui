@@ -21,10 +21,12 @@ interface Props {
 
 const ROLE_NAMES: Record<number, string> = {
   1: 'Administrador',
-  2: 'Coordinador Técnico',
-  3: 'Equipo Técnico',
-  4: 'Jefe de Fundación',
-  5: 'Trabajador de campo',
+  2: 'Analista Técnico',
+  3: 'Trabajador de campo',
+  4: 'Coordinador Técnico',
+  5: 'Equipo Técnico',
+  6: 'Jefe de Fundación',
+  7: 'Auxiliar Técnico',
 }
 
 const menuItems = [
@@ -68,7 +70,7 @@ const menuItems = [
     icon: Activity,
     label: 'Simulaciones',
     section: 'OPERACIONES',
-    roles: [UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FOUNDATION_HEAD],
+    roles: [UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FOUNDATION_HEAD, UserRole.FIELD_WORKER],
   },
   {
     path: '/maps',

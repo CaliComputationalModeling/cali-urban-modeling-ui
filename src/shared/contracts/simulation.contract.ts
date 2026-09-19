@@ -200,6 +200,8 @@ export interface RuleWeightsRequest {
 // CREATE SCENARIO REQUEST
 // ============================================
 
+export type UnidadTemporal = 'dias' | 'semanas' | 'meses'
+
 export interface CreateScenarioRequest {
   nombre: string
   variables_clima: {
@@ -216,7 +218,10 @@ export interface CreateScenarioRequest {
     resolucion_metros: number
     ancho_celdas: number
     alto_celdas: number
+    capacidad_personas_por_m2?: number
   }
+  dias_por_generacion: number
+  unidad_temporal: UnidadTemporal
 }
 
 export interface CreateScenarioResponse {

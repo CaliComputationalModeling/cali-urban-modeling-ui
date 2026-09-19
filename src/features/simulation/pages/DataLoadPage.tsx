@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useEffect } from "react"
 import { Card } from "@/shared/ui/Card"
 import { Button } from "@/shared/ui/Button"

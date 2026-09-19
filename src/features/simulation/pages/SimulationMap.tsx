@@ -47,14 +47,6 @@ function getComunaNumber(properties: GeoJsonProperties): number | null {
   return Number.isFinite(num) ? num : null
 }
 
-function bindComunaTooltip(feature: Feature<Geometry, GeoJsonProperties>, layer: L.Layer) {
-  layer.bindTooltip(getComunaLabel(feature.properties), {
-    permanent: false,
-    direction: 'center',
-    className: 'comuna-tooltip',
-  })
-}
-
 export const SimulationMap = () => {
   const currentGeneration = useSimulationStore((s) => s.currentGeneration)
   const simulationId = useSimulationStore((s) => s.simulationId)
@@ -81,7 +73,6 @@ export const SimulationMap = () => {
   const [editAttractorsMode, setEditAttractorsMode] = useState(false)
   const [attractorsDirty, setAttractorsDirty] = useState(false)
   const [isRecalculating, setIsRecalculating] = useState(false)
-  const [highlightedAttractorId, setHighlightedAttractorId] = useState<number | null>(null)
   const [pendingCreate, setPendingCreate] = useState<{ lat: number; lon: number } | null>(null)
   const [pendingDelete, setPendingDelete] = useState<number | null>(null)
   const [selectedStep, setSelectedStep] = useState<number | null>(null)
@@ -266,10 +257,12 @@ export const SimulationMap = () => {
           borderRadius: '24px',
         }}
       >
-        <TileLayer
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-          attribution="&copy; CARTO"
-        />
+      <TileLayer
+      url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=cb1_3qaq_1_82af32a9aa3979a74a530f3d"
+      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+      subdomains={['a', 'b', 'c', 'd']}
+      maxZoom={20}
+      />
 
         {showComunasLayer && comunasGeoJson && (
           <GeoJSON

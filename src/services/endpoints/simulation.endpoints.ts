@@ -64,6 +64,8 @@ export interface UpdatePesosRequest {
   pesos: Record<string, number>
 }
 
+export type UnidadTemporal = 'dias' | 'semanas' | 'meses'
+
 export interface CreateScenarioRequest {
   nombre: string
   variables_clima: Record<string, number>
@@ -77,8 +79,11 @@ export interface CreateScenarioRequest {
     alto_celdas?: number
     alto?: number
     densidad_inicial?: number[][]
+    capacidad_personas_por_m2?: number
     [key: string]: unknown
   }
+  dias_por_generacion: number
+  unidad_temporal: UnidadTemporal
 }
 
 // Lo que devuelve POST /api/escenarios → VersionEscenarioResponseDTO
@@ -89,7 +94,18 @@ export interface VersionEscenarioResponse {
   variables_clima: Record<string, number>
   variables_seguridad: Record<string, number>
   regla_transicion_id: number
-  configuracion_malla: Record<string, unknown>
+  configuracion_malla: {
+    resolucion_metros?: number
+    tamano_celda?: number
+    ancho_celdas?: number
+    ancho?: number
+    alto_celdas?: number
+    alto?: number
+    capacidad_personas_por_m2?: number
+    dias_por_generacion?: number
+    unidad_temporal?: string
+    [key: string]: unknown
+  }
   estado: string
   fecha_creacion?: string
 }
@@ -214,8 +230,9 @@ export const simulationEndpoints = {
     http.get<VersionEscenarioResponse>(`/api/versiones-escenario/${versionId}`),
 
   // 6. Ejecutar simulación → devuelve EjecucionSimulacionResponse (síncrono, incluye pasos)
+  // Timeout largo: el endpoint ejecuta todo el AC y puede tardar >30 s.
   createSimulation: (data: CreateSimulationRequest) =>
-    http.post<EjecucionSimulacionResponse | ExecutionInitResponse>('/api/simulaciones/ejecutar', data),
+    http.post<EjecucionSimulacionResponse | ExecutionInitResponse>('/api/simulaciones/ejecutar', data, { timeout: 180000 }),
 
   // 6.1. Estado de ejecución asíncrona
   getSimulationStatus: (ejecucionId: SimulationId | number | string) =>

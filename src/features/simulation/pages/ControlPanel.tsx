@@ -124,7 +124,10 @@ export const ControlPanel = () => {
           alto_celdas: altoCeldas,
           densidad_inicial: densidadInicial,
           total_agentes_iniciales: totalAgentes,
+          capacidad_personas_por_m2: 0.01,
         },
+        dias_por_generacion: 1,
+        unidad_temporal: 'dias',
       })
 
       if (!res.ok) {

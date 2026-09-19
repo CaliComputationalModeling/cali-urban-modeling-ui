@@ -3,10 +3,12 @@ import { UserRole } from '@/shared/types/user.types'
 
 const ROLE_HIERARCHY: Record<UserRole, number> = {
   [UserRole.ADMIN]: 100,
+  [UserRole.ANALYST]: 85,
   [UserRole.COORDINATOR]: 80,
   [UserRole.TECHNICIAN]: 60,
   [UserRole.FOUNDATION_HEAD]: 40,
   [UserRole.FIELD_WORKER]: 20,
+  [UserRole.AUXILIARY]: 10,
 }
 
 export function usePermissions() {
@@ -24,7 +26,7 @@ export function usePermissions() {
   const canManageUsers = hasRole(UserRole.ADMIN)
   const canViewExecutiveDashboard = hasRole(UserRole.ADMIN, UserRole.COORDINATOR, UserRole.FOUNDATION_HEAD)
   const canManageObservations = hasRole(UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FIELD_WORKER)
-  const canViewSimulations = hasRole(UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FOUNDATION_HEAD)
+  const canViewSimulations = hasRole(UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FOUNDATION_HEAD, UserRole.FIELD_WORKER)
   const canViewScenarios = hasRole(UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FOUNDATION_HEAD)
   const canViewReports = hasRole(UserRole.ADMIN, UserRole.COORDINATOR, UserRole.TECHNICIAN, UserRole.FOUNDATION_HEAD)
   const canViewAudit = hasRole(UserRole.ADMIN, UserRole.COORDINATOR)

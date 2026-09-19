@@ -47,6 +47,13 @@ const RULE_WEIGHT_OPTIONS: ParameterOption[] = [
   { key: 'deficiencia_iluminacion', label: 'Deficiencia de iluminación', emoji: '💡', effect: 'attractor', signo: 1, min: 0, max: 1, step: 0.05, defaultValue: 0.1 },
   { key: 'cai_policial', label: 'CAI policial', emoji: '👮', effect: 'repulsor', signo: -1, min: 0, max: 1, step: 0.05, defaultValue: 0.0 },
   { key: 'guardia_seguridad', label: 'Guardia de seguridad', emoji: '🛡️', effect: 'repulsor', signo: -1, min: 0, max: 1, step: 0.05, defaultValue: 0.0 },
+  { key: 'comedor_comunitario', label: 'Comedor comunitario', emoji: '🍽️', effect: 'attractor', signo: 1, min: 0, max: 1, step: 0.05, defaultValue: 0.0 },
+  { key: 'albergue', label: 'Albergue', emoji: '🏠', effect: 'attractor', signo: 1, min: 0, max: 1, step: 0.05, defaultValue: 0.0 },
+  { key: 'zona_reciclaje', label: 'Zona de reciclaje', emoji: '♻️', effect: 'attractor', signo: 1, min: 0, max: 1, step: 0.05, defaultValue: 0.0 },
+  { key: 'zona_retaque', label: 'Zona de retaque', emoji: '💰', effect: 'attractor', signo: 1, min: 0, max: 1, step: 0.05, defaultValue: 0.0 },
+  { key: 'olla_consumo', label: 'Olla de consumo', emoji: '⚠️', effect: 'repulsor', signo: -1, min: 0, max: 1, step: 0.05, defaultValue: 0.0 },
+  { key: 'rechazo_ciudadano', label: 'Rechazo ciudadano', emoji: '🚫', effect: 'repulsor', signo: -1, min: 0, max: 1, step: 0.05, defaultValue: 0.0 },
+  { key: 'zona_violencia', label: 'Zona de violencia', emoji: '🔥', effect: 'repulsor', signo: -1, min: 0, max: 1, step: 0.05, defaultValue: 0.0 },
 ]
 
 const RULE_WEIGHT_TOTAL = 1
@@ -285,6 +292,11 @@ export const ScenariosPage = () => {
     createParameterRow(GRID_OPTIONS[0]),
     createParameterRow(GRID_OPTIONS[1]),
   ])
+  const [temporalParams, setTemporalParams] = useState({
+    dias_por_generacion: 1,
+    unidad_temporal: 'dias' as 'dias' | 'semanas' | 'meses',
+  })
+  const [capacityDensity, setCapacityDensity] = useState(0.01)
 
   const fetchAll = async () => {
     setIsLoading(true)
@@ -349,7 +361,10 @@ export const ScenariosPage = () => {
   const createScenario = async () => {
     const variables_clima = rowsToNumberRecord(climateParams)
     const variables_seguridad = rowsToNumberRecord(securityParams)
-    const configuracion_malla = rowsToNumberRecord(gridParams)
+    const configuracion_malla = {
+      ...rowsToNumberRecord(gridParams),
+      capacidad_personas_por_m2: capacityDensity,
+    }
     const reglaId = Number(scenarioForm.regla_transicion_id)
     if (!reglaId) {
       toast.error('Selecciona una regla para crear el escenario')
@@ -362,6 +377,8 @@ export const ScenariosPage = () => {
       variables_clima,
       variables_seguridad,
       configuracion_malla,
+      dias_por_generacion: temporalParams.dias_por_generacion,
+      unidad_temporal: temporalParams.unidad_temporal,
     })
     if (res.ok) {
       toast.success('Escenario creado')
@@ -539,6 +556,60 @@ export const ScenariosPage = () => {
               rows={gridParams}
               onChange={setGridParams}
             />
+
+            <div style={{ display: 'grid', gap: 10, padding: '12px 0', borderTop: '1px solid var(--color-border)' }}>
+              <p style={{ margin: 0, fontWeight: 800, color: 'var(--color-text-dark)' }}>Escala temporal</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <label style={{ display: 'grid', gap: 6, fontSize: 12, color: 'var(--color-text-muted)' }}>
+                  Unidad temporal
+                  <select
+                    className="sheet-select"
+                    value={temporalParams.unidad_temporal}
+                    onChange={(e) => setTemporalParams({ ...temporalParams, unidad_temporal: e.target.value as 'dias' | 'semanas' | 'meses' })}
+                  >
+                    <option value="dias">Días</option>
+                    <option value="semanas">Semanas</option>
+                    <option value="meses">Meses</option>
+                  </select>
+                </label>
+                <label style={{ display: 'grid', gap: 6, fontSize: 12, color: 'var(--color-text-muted)' }}>
+                  {temporalParams.unidad_temporal === 'dias' && 'Días por generación'}
+                  {temporalParams.unidad_temporal === 'semanas' && 'Semanas por generación'}
+                  {temporalParams.unidad_temporal === 'meses' && 'Meses por generación'}
+                  <input
+                    className="sheet-input"
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={temporalParams.dias_por_generacion}
+                    onChange={(e) => setTemporalParams({ ...temporalParams, dias_por_generacion: Math.max(1, Number(e.target.value) || 1) })}
+                  />
+                </label>
+              </div>
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--color-text-muted)' }}>
+                Cada paso del autómata se mostrará como {temporalParams.dias_por_generacion} {temporalParams.unidad_temporal}.
+              </p>
+            </div>
+
+            <div style={{ display: 'grid', gap: 10, padding: '12px 0', borderTop: '1px solid var(--color-border)' }}>
+              <p style={{ margin: 0, fontWeight: 800, color: 'var(--color-text-dark)' }}>Capacidad de carga (acumulación-dispersión)</p>
+              <label style={{ display: 'grid', gap: 6, fontSize: 12, color: 'var(--color-text-muted)' }}>
+                Densidad máxima por defecto (personas/m²)
+                <input
+                  className="sheet-input"
+                  type="number"
+                  min={0.001}
+                  max={1}
+                  step={0.001}
+                  value={capacityDensity}
+                  onChange={(e) => setCapacityDensity(Math.max(0.001, Number(e.target.value) || 0.01))}
+                />
+              </label>
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--color-text-muted)' }}>
+                Usada para calcular la capacidad de carga por defecto de las celdas, incluyendo las zonas de poca iluminación. Valor por defecto: 0.01 personas/m².
+              </p>
+            </div>
+
             <button className="action-button" onClick={createScenario}><Settings2 size={18} />Crear escenario</button>
           </div>
         </section>

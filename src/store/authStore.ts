@@ -3,6 +3,12 @@ import http from '@/services/http'
 import type { User } from '@/shared/types/user.types'
 import type { LoginCredentials, LoginResponse } from '@/shared/types/auth.types'
 
+interface RegisterData {
+  email: string
+  password: string
+  nombre_completo: string
+}
+
 function extractErrorMessage(data: unknown): string {
   if (data && typeof data === 'object' && 'detail' in data) {
     return String((data as { detail: unknown }).detail)
@@ -18,12 +24,17 @@ export interface AuthState {
   isAuthenticated: boolean
   isLoading: boolean
   error: string | null
+  token: string | null
 
   initialize: () => Promise<void>
   login: (credentials: LoginCredentials) => Promise<void>
   logout: () => Promise<void>
+  register: (data: RegisterData) => Promise<void>
   clearSession: () => void
   clearError: () => void
+  setUser: (user: User | null) => void
+  setToken: (token: string | null) => void
+  restoreSession: () => Promise<void>
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -31,6 +42,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isAuthenticated: false,
   isLoading: true,
   error: null,
+  token: null,
 
   initialize: async () => {
     http.onUnauthorized(() => get().clearSession())
@@ -83,14 +95,33 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     get().clearSession()
   },
 
+  register: async (data: RegisterData) => {
+    set({ isLoading: true, error: null })
+    const response = await http.post('/auth/register', data)
+    if (!response.ok) {
+      set({ isLoading: false, error: extractErrorMessage(response.data) })
+      return
+    }
+    set({ isLoading: false, error: null })
+  },
+
   clearSession: () => {
     set({
       user: null,
       isAuthenticated: false,
       isLoading: false,
       error: null,
+      token: null,
     })
   },
 
   clearError: () => set({ error: null }),
+
+  setUser: (user: User | null) => set({ user, isAuthenticated: !!user }),
+
+  setToken: (token: string | null) => set({ token }),
+
+  restoreSession: async () => {
+    await get().initialize()
+  },
 }))

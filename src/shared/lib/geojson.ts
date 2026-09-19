@@ -2,6 +2,7 @@ import type {
   Feature,
   FeatureCollection,
   GeoJsonObject,
+  GeoJsonProperties,
   Geometry,
   GeometryCollection,
   MultiPolygon,

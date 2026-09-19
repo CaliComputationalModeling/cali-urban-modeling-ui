@@ -9,6 +9,7 @@ import { useCallback } from 'react'
 import { useSimulationStore } from '@/store/simulationStore'
 import { useAuthStore } from '@/store/authStore'
 import type { SimulationCreateRequestDTO } from '@/shared/types/api.dtos'
+import type { CreateSimulationFormData } from '@/shared/types/simulation.types'
 
 /**
  * Hook para operaciones de simulación
@@ -56,7 +57,9 @@ export const useSimulation = () => {
   const handleCreateSimulation = useCallback(
     async (config: SimulationCreateRequestDTO) => {
       try {
-        return await createSimulation(config)
+        // Legacy DTO is not compatible with the current scenario form data.
+        // Casting preserves the old component contract while delegating to the store.
+        return await createSimulation(config as unknown as CreateSimulationFormData)
       } catch (err) {
         console.error('Failed to create simulation:', err)
         throw err

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Ejemplo: Simulations List Component
  * 

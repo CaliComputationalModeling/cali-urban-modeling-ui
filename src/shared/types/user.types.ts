@@ -1,9 +1,11 @@
 export enum UserRole {
-  ADMIN = 1,          // Administrador del sistema
-  COORDINATOR = 2,    // Coordinador técnico
-  TECHNICIAN = 3,     // Equipo técnico
-  FOUNDATION_HEAD = 4, // Jefe de fundación
-  FIELD_WORKER = 5,   // Trabajador de campo
+  ADMIN = 1,              // Administrador del sistema
+  ANALYST = 2,            // Analista Técnico
+  FIELD_WORKER = 3,       // Trabajador de campo
+  COORDINATOR = 4,        // Coordinador técnico
+  TECHNICIAN = 5,         // Equipo técnico
+  FOUNDATION_HEAD = 6,    // Jefe de fundación
+  AUXILIARY = 7,          // Auxiliar Técnico
 }
 
 export interface User {

@@ -16,7 +16,7 @@ const createUserSchema = z.object({
     .min(8, 'Mínimo 8 caracteres')
     .regex(/[A-Z]/, 'Debe incluir al menos una mayúscula')
     .regex(/[0-9]/, 'Debe incluir al menos un número'),
-  rol_id: z.coerce.number().min(1).max(5),
+  rol_id: z.coerce.number().min(1).max(7),
 })
 
 type CreateUserForm = z.infer<typeof createUserSchema>
@@ -49,7 +49,7 @@ export const CreateUserSheet: React.FC<Props> = ({ isOpen, onClose, onSuccess })
     formState: { errors, isSubmitting },
   } = useForm<CreateUserForm>({
     resolver: zodResolver(createUserSchema),
-    defaultValues: { nombre_completo: '', email: '', password: '', rol_id: 5 },
+    defaultValues: { nombre_completo: '', email: '', password: '', rol_id: 3 },
   })
 
   const passwordValue = watch('password')
@@ -173,10 +173,12 @@ export const CreateUserSheet: React.FC<Props> = ({ isOpen, onClose, onSuccess })
                   disabled={isSubmitting}
                 >
                   <option value={1}>Administrador del Sistema</option>
-                  <option value={2}>Coordinador Técnico</option>
-                  <option value={3}>Equipo Técnico</option>
-                  <option value={4}>Jefe de Fundación</option>
-                  <option value={5}>Trabajador de Campo</option>
+                  <option value={2}>Analista Técnico</option>
+                  <option value={3}>Trabajador de Campo</option>
+                  <option value={4}>Coordinador Técnico</option>
+                  <option value={5}>Equipo Técnico</option>
+                  <option value={6}>Jefe de Fundación</option>
+                  <option value={7}>Auxiliar Técnico</option>
                 </select>
                 {errors.rol_id && <p className="sheet-field-error">{errors.rol_id.message}</p>}
               </div>
